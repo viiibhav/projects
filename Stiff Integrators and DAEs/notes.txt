@@ -1,0 +1,85 @@
+1. Consider this system of ODEs. Our dependent variables are y and z.
+Here, epsilon is a small parameter. This system in general is very
+stiff for small epsilon. When epsilon is set to 0, this becomes a
+system of differential-algebraic equations, or DAEs. We say that
+y is a differential variable and since z does not have a differential
+term anymore, it is an algebraic variable. Since sitff problems and
+DAEs are clearly related, it makes sense to consider numerical methods
+for stiff problems for DAEs as well.
+
+2. So, we know the two kinds of problems are related. Let's look at some
+key structural differences. We re-arrange the terms and represent the
+system as F(y,z) = 0. Now, we want to apply a k-order BDF method to
+solve this system. At the n-th step, our system can be written like
+this. We just replaced y' by the approximation formula for BDF.
+We want to keep things general and say that the functions f and g
+may be nonlinear. So, we need a Newton-type algorithm to solve this
+system. Recall that Newton's method requires inverting the Jacobian
+of the system. The jacobian wrt y(n+1) and z(n+1) can be written
+like this. Now, as the step size h goes to 0, the jacobian now
+looks like this. A quick reminder that g represents the algebraic
+part of our DAE. For the Newton-type algorithm to converge at each
+step, we require that this Jacobian be non-singular. This means that
+the jacobian of the algebraic system be non-singular. If it is
+singular, the DAE is said to be high-index.
+
+3. The index of a DAE is defined as the number of times a DAE must
+be differentiated to transform it into an equivalent ODE. Again,
+when the jacobian of the algebraic system in the previous slide is
+non-singular, the DAE is said to be index-1, and one differentiation
+of the DAE will give us an ODE. If it is singular, the DAE is
+high-index. So, for high-index DAEs, when h is small,
+J is ill-conditioned and the solution is unstable. When h is large,
+the solution may be stable but it is inaccurate.
+
+4. Lets consider an index-2 DAE system. We have two equations
+dxdt = -y and x = sin(t). x is a differential variable and y is
+an algebraic variable. since y does not appear in the algebraic
+equation, the jacobian from our previous slide will be singular.
+We can differentiate the 2nd equation and substitute from the first
+equation to give us an equivalent system. Now if we notice, it is
+not easy to come up with the correct initial conditions for x, since
+it must satisfy the algebraic equation. For this problem, we can
+figure out the initial conditions from the system on the right.
+
+5. We applied an implicit RK method on the original high-index to see
+how it performed. For the corrent initial conditions, we obtain
+accurate profiles. If the initial condition for y is perturbed,
+the solution exhibits some unstable behavior. If we perturb the
+initial conditions for x, it is very unstable.
+
+6. Now if we apply a BDF method on the same problem, it turns out that
+the numerical solution is able to recover fairly quickly from
+the wrong initial conditions.
+
+7. Let's look at an index-3 DAE system. We have 3 equations. x and y
+are differential variables and z is an algebraic variable. Again,
+the jacobian of the algebraic system is singular, and after two
+differentiations, we can obtain the system on the right-hand side.
+
+8. Again, we apply an implicit RK method, but the solution seems to be
+unstable even for correct initial conditions. This behavior is
+unexpected, but it shows that consistent initial conditions are
+critical for high-index systems.
+
+9. Agan BDF1 seems to recover fairly quicky from wrong initial conditions.
+
+10. We also tested this using BDF2 and we found an unexpected result.
+It turns out BDF2 becomes unstable for the 3rd case, while BDF1
+is stable. BDF2 should ideally perform as well as BDF1, but for
+our test problem, it turned out not to. This may be a problem specific
+behavior, and perhaps higher order methods would be stable, that is
+something we can look at in the future.
+
+11. To conclude, we learned what stiff systems are and how they
+restrict the numerical scheme. We demonstrated that BDF methods
+perform better than explicit and RK family of methods. We saw how
+consistent initial conditions are necessary for high-index systems,
+and BDF methods would be the recommended choice to solve them.
+We will end this presentation by saying that, when dealing with
+high-index DAEs, in many cases we need to to perform index reduction,
+which is a non-trivial procedure.
+
+
+
+
