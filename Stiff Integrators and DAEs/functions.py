@@ -135,27 +135,3 @@ def dae_index3(X, t):
 def dae_index3_exact(t):
     return np.array([np.sin(t), np.cos(t), -np.sin(t)])
 
-
-# Stability plots
-def plot(xspan, mu, ax_limits):
-    fig, ax = plt.subplots()
-    ax.axis('equal')
-    ax.set_xlim(ax_limits)
-    ax.set_ylim(ax_limits)
-    
-    # plot axes
-    ax.plot([0, 0], ax_limits, 'k')
-    ax.plot(ax_limits, [0, 0], 'k')
-    
-    # plot stability region
-    # white = 1 / 256 * np.array([255, 255, 255, 0.9])
-    # green = 1 / 256 * np.array([38, 194, 129, 1])
-    # newcolors = np.vstack((white, green))
-    # newcolors = np.empty([100, 4])
-    # newcolors[10:, :] = green
-    # cmap = ListedColormap(newcolors)
-    X, Y = np.meshgrid(xspan, xspan)
-    im = ax.contourf(Y, X, mu, [0, 1], colors=[[1, 0.5, 0.8]])
-    # fig.colorbar(im, ax=ax)
-
-

@@ -155,7 +155,7 @@ def solve_dae_index3():
 
 
 # =============================================================================
-# Stiff system (hw3 p7)
+# Stiff system
 # =============================================================================
 def solve_stiff():
     y0 = [3, 1.5, 3]
@@ -278,7 +278,7 @@ def solve_robertson():
 # Stability plots
 # =============================================================================
 # Explicit Euler, Midpoint Euler (Trapezoidal/IRK2), Adams-Bashforth
-def plot_stability():
+def plot_stability_EE_IRK2_AB2():
     w = np.exp(1j * np.linspace(0, 2 * np.pi, 200))
     
     Path = mpath.Path
