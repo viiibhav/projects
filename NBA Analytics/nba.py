@@ -9,19 +9,91 @@ import numpy as np
 import pandas as pd
 
 filename = 'nba_seasons\leagues_NBA_{}_games_games.csv'
+
 cols = [0, 3, 4, 5, 6, 15, 17]
 names = ['Date', 'Visitor/Neutral', 'V/N points', 'Home/Neutral', 'H/N points', 'V/N ID', 'H/N ID']
 years = np.arange(2001, 2019)
+years = np.delete(years, [1, 12])
+
 df = {year: pd.DataFrame({name: [] for name in names}) for year in years}
 for year in years[:-3]:
     df[year] = pd.read_csv(filename.format(year), header=0, usecols=cols,
                            names=names, keep_default_na=False)
+    df[year]['Date'] = pd.to_datetime(df[year]['Date'])
 
+# Seasons 2016 -- 2018 have different formats
 cols = [0, 1, 2, 3, 4, 15, 17]
-teams = {}
 for year in years[-3:]:
     df[year] = pd.read_csv(filename.format(year), header=0, nrows=1230,
                            usecols=cols, names=names, keep_default_na=False)
-    teams[year] = pd.read_csv(filename.format(year), header=None, skiprows=1, nrows=30,
-                              usecols=[8, 9, 10],
-                              names=['Team', 'Team Code', 'TeamID'])
+    df[year]['Date'] = pd.to_datetime(df[year]['Date'])
+
+# List of teams
+teams = pd.read_csv(filename.format(2018), header=None, skiprows=1, nrows=30,
+                    usecols=[8, 9, 10], names=['Team', 'Team Code', 'TeamID'],
+                    index_col='Team')
+
+# Team Divisions
+divisions = {'Atlantic': ['Boston Celtics', 'Brooklyn Nets', 'New York Knicks',
+                          'Philadelphia 76ers', 'Toronto Raptors'],
+             'Central': ['Chicago Bulls', 'Cleveland Cavaliers', 'Detroit Pistons',
+                         'Indiana Pacers', 'Milwaukee Bucks'],
+             'Southeast': ['Atlanta Hawks', 'Charlotte Hornets', 'Miami Heat', 'Orlando Magic',
+                           'Washington Wizards'],
+             'Northwest': ['Denver Nuggets', 'Minnesota Timberwolves', 'Oklahoma City Thunder',
+                           'Portland Trail Blazers', 'Utah Jazz'],
+             'Pacific': ['Golden State Warriors', 'Los Angeles Clippers', 'Los Angeles Lakers',
+                         'Phoenix Suns', 'Sacramento Kings'],
+             'Southwest': ['Dallas Mavericks', 'Houston Rockets', 'Memphis Grizzlies',
+                           'New Orleans Pelicans', 'San Antonio Spurs']}
+
+teams['Conference'] = ''
+teams['Division'] = ''
+for team in teams.index:
+    div, = [key for key, value in divisions.items() if team in value]
+    teams.at[team, 'Division'] = div
+    if div in ['Atlantic', 'Central', 'Southeast']:
+        teams.at[team, 'Conference'] = 'Eastern'
+    else:
+        teams.at[team, 'Conference'] = 'Western'
+
+
+team_div = teams[['Team Code', 'Division']]
+
+# Add team divisions in the main dataframe
+for year in years[:-3]:
+    # Add Visitor/Neutral Division
+    df[year] = df[year].merge(team_div, left_on='Visitor/Neutral', right_on='Team')
+    df[year].rename(columns={'Division': 'V/N Division', 'Team Code': 'V/N Code'}, inplace=True)
+
+    # Add Home/Visitor Division
+    df[year] = df[year].merge(team_div, left_on='Home/Neutral', right_on='Team')
+    df[year].rename(columns={'Division': 'H/N Division', 'Team Code': 'H/N Code'}, inplace=True)
+    
+    # Sort by Date
+    df[year].sort_values(by=['Date'], inplace=True)
+    
+    # Reset index that is now jumbled during the merging
+    df[year].reset_index(drop=True, inplace=True)
+
+
+team_div_code = team_div
+team_div_code.reset_index(inplace=True)
+team_div_code.set_index('Team Code', drop=True, inplace=True)
+
+for year in years[-3:]:
+    # Add Visitor/Neutral Division
+    df[year] = df[year].merge(team_div_code, left_on='Visitor/Neutral', right_on='Team Code')
+    df[year].rename(columns={'Division': 'V/N Division', 'Visitor/Neutral': 'V/N Code',
+                             'Team': 'Visitor/Neutral'}, inplace=True)
+
+    # Add Home/Visitor Division
+    df[year] = df[year].merge(team_div_code, left_on='Home/Neutral', right_on='Team Code')
+    df[year].rename(columns={'Division': 'H/N Division', 'Home/Neutral': 'H/N Code',
+                             'Team': 'Home/Neutral'}, inplace=True)
+    
+    # Sort by Date
+    df[year].sort_values(by=['Date'], inplace=True)
+    
+    # Reset index that is now jumbled during the merging
+    df[year].reset_index(drop=True, inplace=True)
