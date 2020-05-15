@@ -52,10 +52,8 @@ teams['Division'] = ''
 for team in teams.index:
     div, = [key for key, value in divisions.items() if team in value]
     teams.at[team, 'Division'] = div
-    if div in ['Atlantic', 'Central', 'Southeast']:
-        teams.at[team, 'Conference'] = 'Eastern'
-    else:
-        teams.at[team, 'Conference'] = 'Western'
+    eastern = ['Atlantic', 'Central', 'Southeast']
+    teams.at[team, 'Conference'] = 'Eastern' if div in eastern else 'Western'
 
 
 team_div = teams[['Team Code', 'Division', 'TeamID']]
@@ -79,7 +77,7 @@ for year in years[:-3]:
     df[year].reset_index(drop=True, inplace=True)
 
 
-team_div_code = team_div
+team_div_code = team_div.copy()
 team_div_code.reset_index(inplace=True)
 team_div_code.set_index('Team Code', drop=True, inplace=True)
 
