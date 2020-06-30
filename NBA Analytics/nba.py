@@ -56,19 +56,19 @@ for team in teams.index:
     teams.at[team, 'Conference'] = 'Eastern' if div in eastern else 'Western'
 
 
-team_div = teams[['Team Code', 'Division', 'TeamID']]
+# team_div = teams[['Team Code', 'Division', 'TeamID', 'Conference']]
 
 # Add team divisions in the main dataframe
 for year in years[:-3]:
     # Add Visitor/Neutral Division
-    df[year] = df[year].merge(team_div, left_on='Visitor/Neutral', right_on='Team')
+    df[year] = df[year].merge(teams, left_on='Visitor/Neutral', right_on='Team')
     df[year].rename(columns={'Division': 'V/N Division', 'Team Code': 'V/N Code',
-                             'TeamID': 'V/N ID'}, inplace=True)
+                             'TeamID': 'V/N ID', 'Conference': 'V/N Conference'}, inplace=True)
 
     # Add Home/Visitor Division
-    df[year] = df[year].merge(team_div, left_on='Home/Neutral', right_on='Team')
+    df[year] = df[year].merge(teams, left_on='Home/Neutral', right_on='Team')
     df[year].rename(columns={'Division': 'H/N Division', 'Team Code': 'H/N Code',
-                             'TeamID': 'H/N ID'}, inplace=True)
+                             'TeamID': 'H/N ID', 'Conference': 'H/N Conference'}, inplace=True)
     
     # Sort by Date
     df[year].sort_values(by=['Date'], inplace=True)
@@ -77,23 +77,48 @@ for year in years[:-3]:
     df[year].reset_index(drop=True, inplace=True)
 
 
-team_div_code = team_div.copy()
-team_div_code.reset_index(inplace=True)
-team_div_code.set_index('Team Code', drop=True, inplace=True)
+teams_by_code = teams.copy()
+teams_by_code.reset_index(inplace=True)
+teams_by_code.set_index('Team Code', drop=True, inplace=True)
 
 for year in years[-3:]:
     # Add Visitor/Neutral Division
-    df[year] = df[year].merge(team_div_code, left_on='Visitor/Neutral', right_on='Team Code')
+    df[year] = df[year].merge(teams_by_code, left_on='Visitor/Neutral', right_on='Team Code')
     df[year].rename(columns={'Division': 'V/N Division', 'Visitor/Neutral': 'V/N Code',
-                              'Team': 'Visitor/Neutral', 'TeamID': 'V/N ID'}, inplace=True)
+                              'Team': 'Visitor/Neutral', 'TeamID': 'V/N ID',
+                              'Conference': 'V/N Conference'}, inplace=True)
 
     # Add Home/Visitor Division
-    df[year] = df[year].merge(team_div_code, left_on='Home/Neutral', right_on='Team Code')
+    df[year] = df[year].merge(teams_by_code, left_on='Home/Neutral', right_on='Team Code')
     df[year].rename(columns={'Division': 'H/N Division', 'Home/Neutral': 'H/N Code',
-                              'Team': 'Home/Neutral', 'TeamID': 'H/N ID'}, inplace=True)
+                              'Team': 'Home/Neutral', 'TeamID': 'H/N ID',
+                              'Conference': 'H/N Conference'}, inplace=True)
     
     # Sort by Date
     df[year].sort_values(by=['Date'], inplace=True)
     
     # Reset index that is now jumbled during the merging
     df[year].reset_index(drop=True, inplace=True)
+
+
+# Label games
+for year in years:
+    df[year]['label'] = ''
+    df[year]['label'] = df[year].apply(lambda x: 'OOC' if x['V/N Conference'] != x['H/N Conference']
+                               else 'DIV' if x['V/N Division'] == x['H/N Division']
+                               else 'ICOD3', axis=1)
+
+
+    for t1 in df[year]['Visitor/Neutral'].unique():
+        g = df[year].groupby(by=['Visitor/Neutral', 'Home/Neutral'])
+        for t2 in df[year]['Visitor/Neutral'].unique():
+            if t2 != t1:
+                g1 = g.get_group((t1, t2))
+                g2 = g.get_group((t2, t1))
+                icod, = 'ICOD3' == g1['label'].unique()
+                if icod:
+                    ngames = len(g1) + len(g2)
+                    if ngames == 4:
+                        idxs = [idx for idx in g1.index] + [idx for idx in g2.index]
+                        for idx in idxs:
+                            df[year].at[idx, 'label'] == 'ICOD4'
