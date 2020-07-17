@@ -103,22 +103,48 @@ for year in years[-3:]:
 
 # Label games
 for year in years:
-    df[year]['label'] = ''
-    df[year]['label'] = df[year].apply(lambda x: 'OOC' if x['V/N Conference'] != x['H/N Conference']
-                               else 'DIV' if x['V/N Division'] == x['H/N Division']
-                               else 'ICOD3', axis=1)
-
-
-    for t1 in df[year]['Visitor/Neutral'].unique():
+    if year != 2012:
+        df[year]['label'] = ''
+        df[year]['label'] = df[year].apply(lambda x: 'OOC' if x['V/N Conference'] != x['H/N Conference']
+                                    else 'DIV' if x['V/N Division'] == x['H/N Division']
+                                    else 'ICOD3', axis=1)
+    
+    
         g = df[year].groupby(by=['Visitor/Neutral', 'Home/Neutral'])
-        for t2 in df[year]['Visitor/Neutral'].unique():
-            if t2 != t1:
-                g1 = g.get_group((t1, t2))
-                g2 = g.get_group((t2, t1))
-                icod, = 'ICOD3' == g1['label'].unique()
-                if icod:
-                    ngames = len(g1) + len(g2)
-                    if ngames == 4:
-                        idxs = [idx for idx in g1.index] + [idx for idx in g2.index]
-                        for idx in idxs:
-                            df[year].at[idx, 'label'] == 'ICOD4'
+        for t1 in df[year]['Visitor/Neutral'].unique():
+            for t2 in df[year]['Visitor/Neutral'].unique():
+                if t2 != t1:
+                    g1 = g.get_group((t1, t2))
+                    g2 = g.get_group((t2, t1))
+                    icod, = 'ICOD3' == g1['label'].unique()
+                    if icod:
+                        ngames = len(g1) + len(g2)
+                        if ngames == 4:
+                            idxs = [idx for idx in g1.index] + [idx for idx in g2.index]
+                            for idx in idxs:
+                                df[year].at[idx, 'label'] = 'ICOD4'
+                            
+
+# Playoffs
+wl_table = {}
+for year in years:
+    wl_table[year] = pd.DataFrame({'Team': []})
+    wl_table[year]['Team'] = df[year]['Visitor/Neutral'].unique()
+    wl_table[year] = wl_table[year].merge(teams[['Conference']], right_index=True, left_on='Team')
+    wl_table[year]['Wins'] = 0
+    wl_table[year].set_index('Team', drop=True, inplace=True)
+    
+    # Get win-loss
+    for index, row in df[year].iterrows():
+        if row['V/N points'] > row['H/N points']:
+            wl_table[year].at[row['Visitor/Neutral'], 'Wins'] += 1
+        else:
+            wl_table[year].at[row['Home/Neutral'], 'Wins'] += 1
+
+playoffs = {year: {conf: [] for conf in teams['Conference'].unique()} for year in years}
+for year in years:
+    g = wl_table[year].groupby(by='Conference')
+    for conf in teams['Conference'].unique():
+        h = g.get_group(conf)
+        h = h.sort_values(by='Wins', ascending=False)
+        playoffs[year][conf] = list(h.head(8).index)
