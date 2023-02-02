@@ -148,3 +148,12 @@ for year in years:
         h = g.get_group(conf)
         h = h.sort_values(by='Wins', ascending=False)
         playoffs[year][conf] = list(h.head(8).index)
+
+
+# add tie-breaks
+
+
+# Remove ICOD4
+exp1 = df.copy()
+
+
