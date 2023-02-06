@@ -17,7 +17,9 @@ from pyomo.common.config import ConfigBlock
 import logging
 logging.getLogger('pyomo.core').setLevel(logging.ERROR)
 import idaes
+import idaes.logger as idaeslog
 import idaes.core.util.scaling as iscale
+idaeslog.getLogger("idaes.core.util.scaling").setLevel(idaeslog.ERROR)
 from idaes.core.util.model_statistics import degrees_of_freedom
 from idaes.core.solvers import petsc
 from idaes.core.solvers import use_idaes_solver_configuration_defaults
@@ -115,9 +117,9 @@ if __name__ == "__main__":
             m.fs, nfe=nfe, wrt=m.fs.time, scheme="BACKWARD"
         )
 
-        # Initialize model at maximum production rate
+        # Initialize model
         ms.from_json(m,
-                     fname="../../max_production.json.gz",
+                     fname="../../min_production.json.gz",
                      wts=ms.StoreSpec.value())
         
         # import pdb; pdb.set_trace()
@@ -135,6 +137,9 @@ if __name__ == "__main__":
 
         # Fix initial conditions
         m.fs.fix_initial_conditions()
+        
+        # Fix DOF issue
+        m.fs.condenser_hx.hot_side.properties[:, 1].temperature.fix()
         
         manipulated_variables = get_manipulated_variables(m)        
         # import pdb; pdb.set_trace()
@@ -322,19 +327,33 @@ if __name__ == "__main__":
         
         return None
     
+    
     def write_nl(m):
         m.write(
             filename='tracking.nl',
             format=ProblemFormat.nl,
             io_options={'symbolic_solver_labels': True}
         )
-        
+        return None
+    
+
+    def get_extra_dofs(m):
+        # get variables from pyomo
         with open('tracking.col', 'r') as model_variables:
             varlist = model_variables.readlines()
             print(len(varlist))
             varlist = [var.strip('\n') for var in varlist]
+        
+        # get variables from incidence graph
+        from pyomo.contrib.incidence_analysis import IncidenceGraphInterface
+        igraph = IncidenceGraphInterface(m)
+        varlist_igraph = [var.name for var in igraph.variables]
+        
+        extra_dofs = [
+            varname for varname in varlist if varname not in varlist_igraph
+        ]
             
-        return varlist
+        return extra_dofs
 
 
     iscale.scale_time_discretization_equations(
@@ -356,7 +375,7 @@ if __name__ == "__main__":
     idaes.cfg.ipopt.options.compl_inf_tol = 1e-02  # default = 1e+00 (unscaled)
     # idaes.cfg.ipopt.options.acceptable_obj_change_tol = 1e-01  # default = 1e+20
     idaes.cfg.ipopt.options.bound_relax_factor = 1e-06 # default = 1e-08
-    idaes.cfg.ipopt.options.max_iter = 200
+    idaes.cfg.ipopt.options.max_iter = 250
     idaes.cfg.ipopt.options.mu_init = 1e-05
     # idaes.cfg.ipopt_l1.options.bound_relax_factor = 1e-06  # default = 1e-08
     # idaes.cfg.ipopt_l1.options.tol = 1e-04  # default = 1e-08
