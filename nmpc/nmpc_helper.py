@@ -687,7 +687,7 @@ def get_large_duals(m, tol=1e+03, jacnz=False):
 
 
 def get_large_residuals(m, tol=1e+04):
-    from idaes.core.util.model_diagnostics import (
+    from idaes.core.util.model_statistics import (
         large_residuals_set, number_large_residuals)
     rs = large_residuals_set(m, tol=tol)
     rn = number_large_residuals(m, tol=tol)
