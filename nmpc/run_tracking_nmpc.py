@@ -119,7 +119,7 @@ if __name__ == "__main__":
 
         # Initialize model
         ms.from_json(m,
-                     fname="../../min_production.json.gz",
+                     fname="../../max_production.json.gz",
                      wts=ms.StoreSpec.value())
         
         # import pdb; pdb.set_trace()
@@ -328,9 +328,9 @@ if __name__ == "__main__":
         return None
     
     
-    def write_nl(m):
+    def write_nl(m, file_prefix='tracking'):
         m.write(
-            filename='tracking.nl',
+            filename=file_prefix + '.nl',
             format=ProblemFormat.nl,
             io_options={'symbolic_solver_labels': True}
         )
@@ -338,6 +338,9 @@ if __name__ == "__main__":
     
 
     def get_extra_dofs(m):
+        # write nl file
+        write_nl(m, file_prefix='tracking')
+        
         # get variables from pyomo
         with open('tracking.col', 'r') as model_variables:
             varlist = model_variables.readlines()
@@ -372,7 +375,7 @@ if __name__ == "__main__":
     idaes.cfg.ipopt.options.acceptable_tol = 1e-04  # default = 1e-06
     idaes.cfg.ipopt.options.constr_viol_tol = 1e-04  # default = 1e-04
     idaes.cfg.ipopt.options.dual_inf_tol = 1e+01  # default = 1e+00 (unscaled)
-    idaes.cfg.ipopt.options.compl_inf_tol = 1e-02  # default = 1e+00 (unscaled)
+    idaes.cfg.ipopt.options.compl_inf_tol = 1e+00  # default = 1e+00 (unscaled)
     # idaes.cfg.ipopt.options.acceptable_obj_change_tol = 1e-01  # default = 1e+20
     idaes.cfg.ipopt.options.bound_relax_factor = 1e-06 # default = 1e-08
     idaes.cfg.ipopt.options.max_iter = 250
