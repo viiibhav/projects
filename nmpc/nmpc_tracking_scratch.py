@@ -310,9 +310,26 @@ def set_initial_conditions(target_model, source_model):
     return None
 
 def apply_control_actions(controller_model, plant_model):
-    for c, p in zip(get_manipulated_variables(controller_model),
-                    get_manipulated_variables(plant_model)):
-        p[:].fix(value(c[controller_model.fs.time.first()]))
+    # for c, p in zip(get_manipulated_variables(controller_model),
+    #                 get_manipulated_variables(plant_model)):
+    #     p[:].fix(value(c[controller_model.fs.time.first()]))
+    controller_MVs = get_manipulated_variables(controller_model)
+    plant_MVs = get_manipulated_variables(plant_model)
+    # controller_MVs = controller.fs.manipulated_variables
+    # plant_MVs = plant.fs.manipulated_variables
+
+    for c, p in zip(controller_MVs, plant_MVs):
+        t0 = controller_model.fs.time.first()
+        t1 = controller_model.fs.time.next(t0)
+        # import pdb; pdb.set_trace()
+        for t, v in c.items():
+            if t == t1:
+                control_input = value(c[t])
+                # t1_index = tuple([t, *idxs])
+                p[t].set_value(control_input)
+                p[t].fix()
+                # p[:].set_value(control_input_0)
+                # p[:].fix()
     
     return None
 
@@ -339,43 +356,54 @@ def create_obj_expr(m):
     expr = 0
     
     expr += 1e+01 * sum((m.fs.h2_mass_production[t] - h2_target[t_base + t])**2
-                        for t in m.fs.time)
+                        for t in m.fs.time if t != m.fs.time.first())
     
     # Penalties on manipulated variable deviations
     mv_multiplier = 1e-03
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.makeup_mix.makeup.flow_mol[t]
-          - makeup_feed_rate[t_base + t])**2 for t in m.fs.time)
+          - makeup_feed_rate[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_blower.inlet.flow_mol[t]
-          - sweep_feed_rate[t_base + t])**2 for t in m.fs.time)
+          - sweep_feed_rate[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.potential_cell[t]
-          - potential[t_base + t])**2 for t in m.fs.time)
+          - potential[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.feed_recycle_split.recycle_ratio[t]
-          - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+          - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.sweep_recycle_split.recycle_ratio[t]
-          - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+          - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-06 * sum(
         (m.fs.feed_heater.electric_heat_duty[t]
-          - feed_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-2
+          - feed_heater_duty[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first()) * 1e-2
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.sweep_heater.electric_heat_duty[t]
-          - sweep_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-3
+          - sweep_heater_duty[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first()) * 1e-3
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.condenser_split.recycle_ratio[t]
-          - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+          - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.condenser_flash.heat_duty[t]
-          - condenser_heat_duty[t_base + t])**2 for t in m.fs.time) * 1e-3
+          - condenser_heat_duty[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first()) * 1e-3
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
-          - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
+          - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
-          - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time)
+          - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
 
     expr += mv_multiplier * 1e-12 * sum((m.fs.feed_heater.electric_heat_duty[t] -
                               m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
@@ -389,22 +417,28 @@ def create_obj_expr(m):
 
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
-          - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
+          - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.feed_heater.outlet.temperature[t]
-          - feed_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time)
+          - feed_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_heater.outlet.temperature[t]
-          - sweep_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time)
+          - sweep_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.fuel_outlet.temperature[t]
-          - fuel_outlet_temperature[t_base + t])**2 for t in m.fs.time)
+          - fuel_outlet_temperature[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.oxygen_outlet.temperature[t]
-          - sweep_outlet_temperature[t_base + t])**2 for t in m.fs.time)
+          - sweep_outlet_temperature[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.stack_core_temperature[t]
-          - stack_core_temperature[t_base + t])**2 for t in m.fs.time)
+          - stack_core_temperature[t_base + t])**2 for t in m.fs.time
+        if t != m.fs.time.first())
     
     return expr
 
@@ -510,7 +544,9 @@ global controls_dict
 controls_dict = {c.name: [] for c in get_manipulated_variables(olnmpc)}
 def save_controls(m, controls_dict):
     for c in get_manipulated_variables(m):
-        controls_dict[c.name].append(value(c[m.fs.time.first()]))
+        t0 = m.fs.time.first()
+        t1 = m.fs.time.next(t0)
+        controls_dict[c.name].append(value(c[t1]))
     return None
 
 global CVs_dict
@@ -569,22 +605,35 @@ timer_stop = time.time()
 print(f'Elapsed time, in seconds: {timer_stop-timer_start:.3f}')
 ###
 
-for i in controls_dict.keys():
-    fig = plt.figure()
-    ax = fig.subplots()
-    ax.plot(controls_dict[i],'b-')
-    for j in alias_dict.keys():
-        if i == j:
-            ax.plot(var_targets[alias_dict[j]].values(),'r--')
-            plt.title(alias_dict[j])
-    plt.show()
 
-for i in CVs_dict.keys():
+def make_plots():
+    for i in controls_dict.keys():
+        fig = plt.figure()
+        ax = fig.subplots()
+        ax.plot(controls_dict[i],'b-')
+        for j in alias_dict.keys():
+            if i == j:
+                ax.plot(var_targets[alias_dict[j]].values(),'r--')
+                plt.title(alias_dict[j])
+        plt.show()
+    
+    for i in CVs_dict.keys():
+        fig = plt.figure()
+        ax = fig.subplots()
+        ax.plot(CVs_dict[i],'b-')
+        for j in alias_dict.keys():
+            if i == j:
+                ax.plot(var_targets[alias_dict[j]].values(),'r--')
+                fig.suptitle(alias_dict[j])
+        plt.show()
+    
     fig = plt.figure()
     ax = fig.subplots()
-    ax.plot(CVs_dict[i],'b-')
-    for j in alias_dict.keys():
-        if i == j:
-            ax.plot(var_targets[alias_dict[j]].values(),'r--')
-            fig.suptitle(alias_dict[j])
-    plt.show()
+    ax.plot(h2_production_rate, 'b-')
+    ax.plot(var_targets[alias_dict['fs.h2_mass_production']].values(), 'r--')
+    plt.title('h2 production rate')
+    
+    return None
+
+
+

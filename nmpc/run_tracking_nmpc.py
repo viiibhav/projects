@@ -239,10 +239,15 @@ if __name__ == "__main__":
 
         for c, p in zip(controller_MVs, plant_MVs):
             t0 = controller.fs.time.first()
-            control_input = value(c[t0])
-            p[:].set_value(control_input)
-            p[:].fix()
-
+            t1 = controller.fs.time.next(t0)
+            for t, v in c.items():
+                if t == t1:
+                    control_input = value(c[t])
+                    p[t].set_value(control_input)
+                    p[t].fix()
+                    # p[:].set_value(control_input_0)
+                    # p[:].fix()
+            
         return None
 
 
@@ -272,9 +277,10 @@ if __name__ == "__main__":
     # controls_dict = {c.name: [] for c in controller.fs.manipulated_variables}
     def save_controls(controls_dict):
         t0 = controller.fs.time.first()
+        t1 = controller.fs.time.next(t0)  # controller.fs.time.at(2)
         for c in get_manipulated_variables(controller):
         # for c in controller.fs.manipulated_variables:
-            controls_dict[c.name].append(value(c[t0]))
+            controls_dict[c.name].append(value(c[t1]))
         return None
 
 
@@ -430,6 +436,7 @@ if __name__ == "__main__":
         make_tracking_objective_with_MVs(controller, iter)
         # add_penalty_formulation(controller)
         # controller.solutions.load_from(results)
+        
         results = solver.solve(controller, tee=True, load_solutions=True)
         termination_condition = results.solver.termination_condition
         if (termination_condition == TerminationCondition.infeasible or
