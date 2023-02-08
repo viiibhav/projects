@@ -307,69 +307,89 @@ def make_tracking_objective_with_MVs(m, iter):
     def tracking_objective_with_MVs(m):
         expr = 0
         expr += 1e+02 * sum(
-            (m.fs.h2_mass_production[t] - h2_target[t])**2 for t in m.fs.time)
+            (m.fs.h2_mass_production[t] - h2_target[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
 
         # Penalties on manipulated variable deviations
         mv_multiplier = 1e-03
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.makeup_mix.makeup.flow_mol[t]
-             - makeup_feed_rate[t])**2 for t in m.fs.time)
+             - makeup_feed_rate[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.sweep_blower.inlet.flow_mol[t]
-             - sweep_feed_rate[t])**2 for t in m.fs.time)
+             - sweep_feed_rate[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.soc_module.potential_cell[t]
-             - potential[t])**2 for t in m.fs.time)
+             - potential[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.feed_recycle_split.recycle_ratio[t]
-             - fuel_recycle_ratio[t])**2 for t in m.fs.time)
+             - fuel_recycle_ratio[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.sweep_recycle_split.recycle_ratio[t]
-             - sweep_recycle_ratio[t])**2 for t in m.fs.time)
+             - sweep_recycle_ratio[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-06 * sum(
             (m.fs.feed_heater.electric_heat_duty[t]
-             - feed_heater_duty[t])**2 for t in m.fs.time)
+             - feed_heater_duty[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-07 * sum(
             (m.fs.sweep_heater.electric_heat_duty[t]
-             - sweep_heater_duty[t])**2 for t in m.fs.time)
+             - sweep_heater_duty[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+04 * sum(
             (m.fs.condenser_split.recycle_ratio[t]
-             - vgr_recycle_ratio[t])**2 for t in m.fs.time)
+             - vgr_recycle_ratio[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         # expr += mv_multiplier * 1e-04 * sum(
             # (m.fs.condenser_hx.cold_side_inlet.flow_mol[t]
-             # - cooling_water_feed[t])**2 for t in m.fs.time)
+             # - cooling_water_feed[t])**2 for t in m.fs.time
+             # if t != m.fs.time.first())
         expr += mv_multiplier * 1e-07 * sum(
             (m.fs.condenser_flash.heat_duty[t]
-              - condenser_heat_duty[t])**2 for t in m.fs.time)
+              - condenser_heat_duty[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+14 * sum(
             (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
-              - makeup_mole_frac_comp_H2[t])**2 for t in m.fs.time)
+              - makeup_mole_frac_comp_H2[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
-             - makeup_mole_frac_comp_H2O[t])**2 for t in m.fs.time)
+             - makeup_mole_frac_comp_H2O[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
 
         mv_multiplier = 1e-06
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
-             - soc_fuel_outlet_mole_frac_comp_H2[t])**2 for t in m.fs.time)
+             - soc_fuel_outlet_mole_frac_comp_H2[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.feed_heater.outlet.temperature[t]
-             - feed_heater_outlet_temperature[t])**2 for t in m.fs.time)
+             - feed_heater_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.sweep_heater.outlet.temperature[t]
-             - sweep_heater_outlet_temperature[t])**2 for t in m.fs.time)
+             - sweep_heater_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.soc_module.fuel_outlet.temperature[t]
-             - fuel_outlet_temperature[t])**2 for t in m.fs.time)
+             - fuel_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.soc_module.oxygen_outlet.temperature[t]
-             - sweep_outlet_temperature[t])**2 for t in m.fs.time)
+             - sweep_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.condenser_hx.hot_side_outlet.temperature[t]
-             - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time)
+             - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.stack_core_temperature[t]
-             - stack_core_temperature[t])**2 for t in m.fs.time)
+             - stack_core_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first())
 
         # Penalties on oscillations
         # expr += 1e+01 * sum(
