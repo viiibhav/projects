@@ -71,7 +71,7 @@ pred_horizon = pred_step_num*t_step
 
 t_start = 0.5*60*60
 t_ramp = 1*60*60
-t_end = 1*60*60
+t_end = 2*60*60
 
 sim_horizon = t_start + t_ramp + t_end + t_ramp + t_end
 critical_times = [np.array([t_start,t_start])/3600,
@@ -257,6 +257,8 @@ def create_model(tset, nfe, plant=True, from_min=True):
     if plant:
         assert degrees_of_freedom(m) == 0
 
+    print(f"degrees of freedom = {degrees_of_freedom(m)}")
+
     return m
 
 def petsc_initialize(m):
@@ -310,26 +312,24 @@ def set_initial_conditions(target_model, source_model):
     return None
 
 def apply_control_actions(controller_model, plant_model):
-    # for c, p in zip(get_manipulated_variables(controller_model),
-    #                 get_manipulated_variables(plant_model)):
-    #     p[:].fix(value(c[controller_model.fs.time.first()]))
-    controller_MVs = get_manipulated_variables(controller_model)
-    plant_MVs = get_manipulated_variables(plant_model)
-    # controller_MVs = controller.fs.manipulated_variables
-    # plant_MVs = plant.fs.manipulated_variables
+    for c, p in zip(get_manipulated_variables(controller_model),
+                    get_manipulated_variables(plant_model)):
+        p[:].fix(value(c[controller_model.fs.time.first()]))
+    # controller_MVs = get_manipulated_variables(controller_model)
+    # plant_MVs = get_manipulated_variables(plant_model)
+    # # controller_MVs = controller.fs.manipulated_variables
+    # # plant_MVs = plant.fs.manipulated_variables
 
-    for c, p in zip(controller_MVs, plant_MVs):
-        t0 = controller_model.fs.time.first()
-        t1 = controller_model.fs.time.next(t0)
-        # import pdb; pdb.set_trace()
-        for t, v in c.items():
-            if t == t1:
-                control_input = value(c[t])
-                # t1_index = tuple([t, *idxs])
-                p[t].set_value(control_input)
-                p[t].fix()
-                # p[:].set_value(control_input_0)
-                # p[:].fix()
+    # for c, p in zip(controller_MVs, plant_MVs):
+    #     t0 = controller_model.fs.time.first()
+    #     t1 = controller_model.fs.time.next(t0)
+    #     for t, v in c.items():
+    #         if t == t1:
+    #             control_input = value(c[t])
+    #             p[t].set_value(control_input)
+    #             p[t].fix()
+    #             # p[:].set_value(control_input_0)
+    #             # p[:].fix()
     
     return None
 
@@ -355,90 +355,119 @@ def create_obj_expr(m):
     
     expr = 0
     
-    expr += 1e+01 * sum((m.fs.h2_mass_production[t] - h2_target[t_base + t])**2
-                        for t in m.fs.time if t != m.fs.time.first())
+    expr += 1e+01 * sum(
+        (m.fs.h2_mass_production[t] - h2_target[t_base + t])**2
+        for t in m.fs.time
+        # if t != m.fs.time.first()
+    )
     
     # Penalties on manipulated variable deviations
     mv_multiplier = 1e-03
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.makeup_mix.makeup.flow_mol[t]
           - makeup_feed_rate[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_blower.inlet.flow_mol[t]
           - sweep_feed_rate[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.potential_cell[t]
           - potential[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.feed_recycle_split.recycle_ratio[t]
           - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.sweep_recycle_split.recycle_ratio[t]
           - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-06 * sum(
         (m.fs.feed_heater.electric_heat_duty[t]
           - feed_heater_duty[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first()) * 1e-2
+        # if t != m.fs.time.first()
+    ) * 1e-2
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.sweep_heater.electric_heat_duty[t]
           - sweep_heater_duty[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first()) * 1e-3
+        # if t != m.fs.time.first()
+    ) * 1e-3
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.condenser_split.recycle_ratio[t]
           - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.condenser_flash.heat_duty[t]
           - condenser_heat_duty[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first()) * 1e-3
+        # if t != m.fs.time.first()
+    ) * 1e-3
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
           - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
           - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
 
-    expr += mv_multiplier * 1e-12 * sum((m.fs.feed_heater.electric_heat_duty[t] -
-                              m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
-                            for t in m.fs.time if t != m.fs.time.first())
-    expr += mv_multiplier * 1e-14 * sum((m.fs.sweep_heater.electric_heat_duty[t] -
-                              m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
-                            for t in m.fs.time if t != m.fs.time.first())
-    expr += mv_multiplier * 1e-14 * sum((m.fs.condenser_flash.heat_duty[t] -
-                              m.fs.condenser_flash.heat_duty[m.fs.time.prev(t)])**2
-                            for t in m.fs.time if t != m.fs.time.first())
+    expr += mv_multiplier * 1e-12 * sum(
+        (m.fs.feed_heater.electric_heat_duty[t]
+         - m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+         for t in m.fs.time if (t != m.fs.time.first())
+         # or (t!= m.fs.time.next(m.fs.time.first()))
+    )
+    expr += mv_multiplier * 1e-14 * sum(
+        (m.fs.sweep_heater.electric_heat_duty[t]
+         - m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+        for t in m.fs.time if (t != m.fs.time.first())
+        # or (t!= m.fs.time.next(m.fs.time.first()))
+    )
+    expr += mv_multiplier * 1e-14 * sum(
+        (m.fs.condenser_flash.heat_duty[t]
+         - m.fs.condenser_flash.heat_duty[m.fs.time.prev(t)])**2
+        for t in m.fs.time if (t != m.fs.time.first())
+        # or (t!= m.fs.time.next(m.fs.time.first()))
+    )
 
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
           - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.feed_heater.outlet.temperature[t]
           - feed_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_heater.outlet.temperature[t]
           - sweep_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.fuel_outlet.temperature[t]
           - fuel_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.oxygen_outlet.temperature[t]
           - sweep_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.stack_core_temperature[t]
           - stack_core_temperature[t_base + t])**2 for t in m.fs.time
-        if t != m.fs.time.first())
+        # if t != m.fs.time.first()
+    )
     
     return expr
 
@@ -545,8 +574,8 @@ controls_dict = {c.name: [] for c in get_manipulated_variables(olnmpc)}
 def save_controls(m, controls_dict):
     for c in get_manipulated_variables(m):
         t0 = m.fs.time.first()
-        t1 = m.fs.time.next(t0)
-        controls_dict[c.name].append(value(c[t1]))
+        # t1 = m.fs.time.next(t0)
+        controls_dict[c.name].append(value(c[t0]))
     return None
 
 global CVs_dict
