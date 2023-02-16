@@ -52,12 +52,11 @@ alias_dict = {
     "fs.sweep_heater.electric_heat_duty": "sweep_heater_duty",
     "fs.sweep_heater._temperature_outlet_ref": "sweep_heater_outlet_temperature",
     "fs.soc_module._temperature_oxygen_outlet_ref": "sweep_outlet_temperature",
-    #TODO: stack_core_temperature references only apply in SOEC mode, not sure how to implement.
     "fs.stack_core_temperature": "stack_core_temperature",
     "fs.feed_recycle_split.recycle_ratio": "fuel_recycle_ratio",
     "fs.sweep_recycle_split.recycle_ratio": "sweep_recycle_ratio",
-    # "fs.sweep_recycle_split.mixed_state[0].mole_frac_comp['O2']": "oxygen_out",
-    # "fs.feed_recycle_mix.mixed_state[0].mole_frac_comp['H2']": "hydrogen_in",
+    "fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]": "oxygen_out",
+    "fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]": "hydrogen_in",
     "fs.condenser_split.recycle_ratio": "vgr_recycle_ratio",
     "fs.condenser_flash.heat_duty": "condenser_heat_duty",
     "fs.makeup_mix.makeup_mole_frac_comp_H2": "makeup_mole_frac_comp_H2",
@@ -71,15 +70,17 @@ pred_horizon = pred_step_num*t_step
 
 t_start = 0.5*60*60
 t_ramp = 1*60*60
-t_end = 2*60*60
+t_settle = 2*60*60
+t_end = 1*60*60
 
-sim_horizon = t_start + t_ramp + t_end + t_ramp + t_end
+sim_horizon = t_start + t_ramp + t_settle + t_ramp + t_end
 critical_times = [np.array([t_start,t_start])/3600,
                   np.array([t_start+t_ramp,t_start+t_ramp])/3600,
-                  np.array([t_start+t_ramp+t_end,t_start+t_ramp+t_end])/3600,
-                  np.array([t_start+t_ramp+t_end+t_ramp,t_start+t_ramp+t_end+t_ramp])/3600]
+                  np.array([t_start+t_ramp+t_settle,t_start+t_ramp+t_settle])/3600,
+                  np.array([t_start+t_ramp+t_settle+t_ramp,t_start+t_ramp+t_settle+t_ramp])/3600]
 sim_nfe = int((sim_horizon)/t_step)
 sim_time_set = np.linspace(0, sim_nfe*t_step, sim_nfe+1)
+traj_time_set = np.linspace(0, sim_nfe*t_step+pred_horizon, sim_nfe+pred_step_num+1)
     
 iter_count = 0
 
@@ -117,14 +118,18 @@ def check_DoF(m):
 
 ###
 #Function to create setpoint trajectories.
-def make_var_trajs(mode_, tset_, ts_, tr_, te_):
+def make_var_trajs(mode_, tset_, ts_, tr_, tl_, te_):
     df = pd.read_csv(
         "./../../soec_flowsheet_operating_conditions.csv",
         index_col=0,
     )
     
-    def make_one_var_traj(alias, mode, tset, ts, tr, te):
-        slope = (df[alias]["maximum_H2"] - df[alias]["minimum_H2"])/tr
+    def make_one_var_traj(alias, mode, tset, ts, tr, tl, te):
+        mode1 = 'maximum_H2'
+        mode2 = 'minimum_H2'
+        # mode1 = 'minimum_H2'
+        # mode2 = 'maximum_H2'
+        slope = (df[alias][mode1] - df[alias][mode2])/tr
         
         #Mode 1: up-down
         #Mode 2: down-up
@@ -137,35 +142,35 @@ def make_var_trajs(mode_, tset_, ts_, tr_, te_):
                 if mode == 1:
                     var_target[t] = df[alias]["minimum_H2"]
                 elif mode == 2:
-                    var_target[t] = df[alias]["maximum_H2"]
+                    var_target[t] = df[alias][mode1]
                 else:
                     raise NotImplementedError("Invalid mode.")
             elif ts <= t < ts + tr:
                 if mode == 1:
                     var_target[t] = df[alias]["minimum_H2"] + slope*(t - ts)
                 elif mode == 2:
-                    var_target[t] = df[alias]["maximum_H2"] - slope*(t - ts)
+                    var_target[t] = df[alias][mode1] - slope*(t - ts)
                 else:
                     raise NotImplementedError("Invalid mode.")
-            elif ts + tr <= t < ts + tr + te:
+            elif ts + tr <= t < ts + tr + tl:
                 if mode == 1:
                     var_target[t] = df[alias]["maximum_H2"]
                 elif mode == 2:
-                    var_target[t] = df[alias]["minimum_H2"]
+                    var_target[t] = df[alias][mode2]
                 else:
                     raise NotImplementedError("Invalid mode.")
-            elif ts + tr + te <= t < ts + tr + te + tr:
+            elif ts + tr + tl <= t < ts + tr + tl + tr:
                 if mode == 1:
-                    var_target[t] = df[alias]["maximum_H2"] - slope*(t - ts - tr - te)
+                    var_target[t] = df[alias]["maximum_H2"] - slope*(t - ts - tr - tl)
                 elif mode == 2:
-                    var_target[t] = df[alias]["minimum_H2"] + slope*(t - ts - tr - te)
+                    var_target[t] = df[alias][mode2] + slope*(t - ts - tr - tl)
                 else:
                     raise NotImplementedError("Invalid mode.")
             else:
                 if mode == 1:
                     var_target[t] = df[alias]["minimum_H2"]
                 elif mode == 2:
-                    var_target[t] = df[alias]["maximum_H2"]
+                    var_target[t] = df[alias][mode1]
                 else:
                     raise NotImplementedError("Invalid mode.")
         
@@ -173,7 +178,7 @@ def make_var_trajs(mode_, tset_, ts_, tr_, te_):
     
     var_trajs = {alias:{} for alias in alias_dict.values()}
     for alias_ in var_trajs:
-        var_trajs[alias_] = make_one_var_traj(alias_, mode_, tset_, ts_, tr_, te_)
+        var_trajs[alias_] = make_one_var_traj(alias_, mode_, tset_, ts_, tr_, tl_, te_)
     
     return var_trajs
 ###
@@ -206,6 +211,10 @@ def get_manipulated_variables(m):
         m.fs.makeup_mix.makeup_mole_frac_comp_H2O,
     ]
 
+def set_indexed_variable_bounds(var, bounds):
+    for idx, subvar in var.items():
+        subvar.bounds = bounds
+
 def create_model(tset, nfe, plant=True, from_min=True):
     m = ConcreteModel()
     m.fs = SoecStandaloneFlowsheet(
@@ -217,6 +226,28 @@ def create_model(tset, nfe, plant=True, from_min=True):
         include_interconnect=True,
     )
     
+    m.fs.p = pyo.Var(m.fs.time,
+                      initialize=0,
+                      domain=pyo.NonNegativeReals)
+    m.fs.n = pyo.Var(m.fs.time,
+                      initialize=0,
+                      domain=pyo.NonNegativeReals)
+    
+    # set_indexed_variable_bounds(m.fs.makeup_mix.makeup_mole_frac_comp_H2, (1e-14,1e-14))
+    # set_indexed_variable_bounds(m.fs.makeup_mix.makeup_mole_frac_comp_H2O, (0.999-1e-14,0.999-1e-14))
+    
+    if not plant:
+    #     @m.fs.Constraint(m.fs.time)
+    #     def makeup_mole_frac_sum_eqn(b, t):
+    #         return b.makeup_mix.makeup_mole_frac_comp_H2[t] + b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 + b.p[t]
+        @m.fs.Constraint(m.fs.time)
+        def makeup_mole_frac_eqn1(b, t):
+            return b.makeup_mix.makeup_mole_frac_comp_H2[t] == 1e-14 + b.p[t]
+        
+        @m.fs.Constraint(m.fs.time)
+        def makeup_mole_frac_eqn2(b, t):
+            return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - 1e-14 + b.n[t]
+        
     iscale.calculate_scaling_factors(m)
     
     pyo.TransformationFactory("dae.finite_difference").apply_to(
@@ -256,8 +287,6 @@ def create_model(tset, nfe, plant=True, from_min=True):
 
     if plant:
         assert degrees_of_freedom(m) == 0
-
-    print(f"degrees of freedom = {degrees_of_freedom(m)}")
 
     return m
 
@@ -315,21 +344,6 @@ def apply_control_actions(controller_model, plant_model):
     for c, p in zip(get_manipulated_variables(controller_model),
                     get_manipulated_variables(plant_model)):
         p[:].fix(value(c[controller_model.fs.time.first()]))
-    # controller_MVs = get_manipulated_variables(controller_model)
-    # plant_MVs = get_manipulated_variables(plant_model)
-    # # controller_MVs = controller.fs.manipulated_variables
-    # # plant_MVs = plant.fs.manipulated_variables
-
-    # for c, p in zip(controller_MVs, plant_MVs):
-    #     t0 = controller_model.fs.time.first()
-    #     t1 = controller_model.fs.time.next(t0)
-    #     for t, v in c.items():
-    #         if t == t1:
-    #             control_input = value(c[t])
-    #             p[t].set_value(control_input)
-    #             p[t].fix()
-    #             # p[:].set_value(control_input_0)
-    #             # p[:].fix()
     
     return None
 
@@ -348,6 +362,8 @@ def create_obj_expr(m):
     stack_core_temperature = var_targets['stack_core_temperature']
     fuel_recycle_ratio = var_targets['fuel_recycle_ratio']
     sweep_recycle_ratio = var_targets['sweep_recycle_ratio']
+    oxygen_out = var_targets["oxygen_out"]
+    hydrogen_in = var_targets["hydrogen_in"]
     vgr_recycle_ratio = var_targets['vgr_recycle_ratio']
     condenser_heat_duty = var_targets['condenser_heat_duty']
     makeup_mole_frac_comp_H2 = var_targets['makeup_mole_frac_comp_H2']
@@ -355,119 +371,87 @@ def create_obj_expr(m):
     
     expr = 0
     
-    expr += 1e+01 * sum(
-        (m.fs.h2_mass_production[t] - h2_target[t_base + t])**2
-        for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+    expr += 1e+00 * sum((m.fs.h2_mass_production[t] - h2_target[t_base + t])**2
+                        for t in m.fs.time)
     
     # Penalties on manipulated variable deviations
     mv_multiplier = 1e-03
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.makeup_mix.makeup.flow_mol[t]
-          - makeup_feed_rate[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - makeup_feed_rate[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_blower.inlet.flow_mol[t]
-          - sweep_feed_rate[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - sweep_feed_rate[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.potential_cell[t]
-          - potential[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - potential[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.feed_recycle_split.recycle_ratio[t]
-          - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.sweep_recycle_split.recycle_ratio[t]
-          - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-06 * sum(
         (m.fs.feed_heater.electric_heat_duty[t]
-          - feed_heater_duty[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    ) * 1e-2
+          - feed_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-5
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.sweep_heater.electric_heat_duty[t]
-          - sweep_heater_duty[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    ) * 1e-3
+          - sweep_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-6
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.condenser_split.recycle_ratio[t]
-          - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-07 * sum(
         (m.fs.condenser_flash.heat_duty[t]
-          - condenser_heat_duty[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    ) * 1e-3
+          - condenser_heat_duty[t_base + t])**2 for t in m.fs.time) * 1e-6
     expr += mv_multiplier * 1e+01 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
-          - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
-          - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
-
-    expr += mv_multiplier * 1e-12 * sum(
-        (m.fs.feed_heater.electric_heat_duty[t]
-         - m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
-         for t in m.fs.time if (t != m.fs.time.first())
-         # or (t!= m.fs.time.next(m.fs.time.first()))
-    )
-    expr += mv_multiplier * 1e-14 * sum(
-        (m.fs.sweep_heater.electric_heat_duty[t]
-         - m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
-        for t in m.fs.time if (t != m.fs.time.first())
-        # or (t!= m.fs.time.next(m.fs.time.first()))
-    )
-    expr += mv_multiplier * 1e-14 * sum(
-        (m.fs.condenser_flash.heat_duty[t]
-         - m.fs.condenser_flash.heat_duty[m.fs.time.prev(t)])**2
-        for t in m.fs.time if (t != m.fs.time.first())
-        # or (t!= m.fs.time.next(m.fs.time.first()))
-    )
+          - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time)
+    
+    expr += mv_multiplier * 1e-12 * sum((m.fs.feed_heater.electric_heat_duty[t] -
+                              m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+                            for t in m.fs.time if t != m.fs.time.first())
+    expr += mv_multiplier * 1e-14 * sum((m.fs.sweep_heater.electric_heat_duty[t] -
+                              m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+                            for t in m.fs.time if t != m.fs.time.first())
+    expr += mv_multiplier * 1e-14 * sum((m.fs.condenser_flash.heat_duty[t] -
+                              m.fs.condenser_flash.heat_duty[m.fs.time.prev(t)])**2
+                            for t in m.fs.time if t != m.fs.time.first())
 
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
-          - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.feed_heater.outlet.temperature[t]
-          - feed_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - feed_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.sweep_heater.outlet.temperature[t]
-          - sweep_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - sweep_heater_outlet_temperature[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.fuel_outlet.temperature[t]
-          - fuel_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - fuel_outlet_temperature[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.soc_module.oxygen_outlet.temperature[t]
-          - sweep_outlet_temperature[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - sweep_outlet_temperature[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e-03 * sum(
         (m.fs.stack_core_temperature[t]
-          - stack_core_temperature[t_base + t])**2 for t in m.fs.time
-        # if t != m.fs.time.first()
-    )
+          - stack_core_temperature[t_base + t])**2 for t in m.fs.time)
+    expr += mv_multiplier * 1e-03 * sum(
+        (m.fs.stack_core_temperature[t]
+          - stack_core_temperature[t_base + t])**2 for t in m.fs.time)
+    expr += mv_multiplier * 1e+01 * sum(
+        (m.fs.sweep_recycle_split.mixed_state[t].mole_frac_comp['O2']
+          - oxygen_out[t_base + t])**2 for t in m.fs.time)
+    expr += mv_multiplier * 1e+01 * sum(
+        (m.fs.feed_recycle_mix.mixed_state[t].mole_frac_comp['H2']
+          - hydrogen_in[t_base + t])**2 for t in m.fs.time)
+    
+    expr += 1e+03 * sum(m.fs.p[t]
+                        for t in m.fs.time)
+    expr += 1e+03 * sum(m.fs.n[t]
+                        for t in m.fs.time)
     
     return expr
 
@@ -507,7 +491,7 @@ use_idaes_solver_configuration_defaults()
 idaes.cfg.ipopt.options.nlp_scaling_method = "user-scaling"
 idaes.cfg.ipopt["options"]["linear_solver"] = "ma57"
 idaes.cfg.ipopt.options.OF_ma57_automatic_scaling = "yes"
-idaes.cfg.ipopt["options"]["max_iter"] = 250
+idaes.cfg.ipopt["options"]["max_iter"] = 300
 idaes.cfg.ipopt["options"]["halt_on_ampl_error"] = "no"
 idaes.cfg.ipopt["options"]["bound_relax_factor"] = 1e-08
 idaes.cfg.ipopt["options"]["bound_push"] = 1e-06
@@ -534,8 +518,8 @@ iscale.scale_time_discretization_equations(olnmpc, olnmpc.fs.time, 1/t_step)
 
 #Generate initial plant model results.
 print('Solving initial plant model...\n')
-petsc_initialize(plant)
-solver.solve(plant, tee=True)
+init_petsc_results = petsc_initialize(plant)
+init_plant_results = solver.solve(plant, tee=True)
 
 def make_states_dict(m):
     states_dict = {c.name: {} for c in get_state_vars(m)}
@@ -558,41 +542,50 @@ save_states(plant, states_dict)
 idaes.cfg.ipopt["options"]["tol"] = 1e-04
 idaes.cfg.ipopt["options"]["constr_viol_tol"] = 1e-04
 idaes.cfg.ipopt["options"]["acceptable_tol"] = 1e-04
-idaes.cfg.ipopt["options"]["dual_inf_tol"] = 1e+02
+idaes.cfg.ipopt["options"]["dual_inf_tol"] = 1e+01
 solver = pyo.SolverFactory("ipopt")
 
-global h2_production_rate
 h2_production_rate = []
-def save_h2_production_rate(m):
+def save_h2_production_rate(m, h2_production_rate):
     h2_production_rate.append(value(m.fs.h2_mass_production[m.fs.time.last()]))
     return None
 
 objective = []
 
-global controls_dict
 controls_dict = {c.name: [] for c in get_manipulated_variables(olnmpc)}
 def save_controls(m, controls_dict):
     for c in get_manipulated_variables(m):
-        t0 = m.fs.time.first()
-        # t1 = m.fs.time.next(t0)
-        controls_dict[c.name].append(value(c[t0]))
+        controls_dict[c.name].append(value(c[m.fs.time.first()]))
     return None
 
-global CVs_dict
 CVs_dict = {c.name: [] for c in get_CVs(plant)}
+CVs_dict.update({'fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]': []})
+CVs_dict.update({'fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]': []})
 def save_CVs(m, CVs_dict):
     for c in get_CVs(m):
         CVs_dict[c.name].append(value(c[m.fs.time.last()]))
+    CVs_dict['fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]'].append(value(m.fs.sweep_recycle_split.mixed_state[m.fs.time.last()].mole_frac_comp['O2']))
+    CVs_dict['fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]'].append(value(m.fs.feed_recycle_mix.mixed_state[m.fs.time.last()].mole_frac_comp['H2']))
+    return None
+
+# slack = []
+slack = {}
+slack.update({'p': []})
+slack.update({'n': []})
+def save_slack(m, slack):
+    slack['p'].append(value(m.fs.p[m.fs.time.first()]))
+    slack['n'].append(value(m.fs.n[m.fs.time.first()]))
     return None
 ###
 
 
 ###
+global solver_time
+solver_time = []
+
 #Create variable setpoint trajectories.
 global var_targets
-var_targets = make_var_trajs(2, sim_time_set, t_start, t_ramp, t_end)
-
-timer_start = time.time()
+var_targets = make_var_trajs(2, traj_time_set, t_start, t_ramp, t_settle, t_end)
 
 for iter_count, t in enumerate(sim_time_set):
     t_base = t
@@ -601,17 +594,19 @@ for iter_count, t in enumerate(sim_time_set):
     # Fix initial conditions for states
     set_initial_conditions(target_model=olnmpc, source_model=plant)
     olnmpc.fs.fix_initial_conditions()
-    
     if hasattr(olnmpc, 'obj'):
         olnmpc.del_component('obj')
     olnmpc.obj = pyo.Objective(rule=create_obj_expr, sense=pyo.minimize)
     
     print(f'\nSolving {olnmpc.name}, iteration {iter_count}...\n')
     
-    solver.solve(olnmpc, tee=True, load_solutions=True)
-    
+    timer_start = time.time()
+    olnmpc_results = solver.solve(olnmpc, tee=True, load_solutions=True)
+    solver_time.append(time.time()-timer_start)
+    # break
     objective.append(value(olnmpc.obj))
     save_controls(olnmpc, controls_dict)
+    save_slack(olnmpc, slack)
     
     # Set up Plant model
     set_initial_conditions(target_model=plant, source_model=plant)
@@ -621,48 +616,60 @@ for iter_count, t in enumerate(sim_time_set):
 
     print(f'\nSolving {plant.name}, iteration {iter_count}...\n')
     
-    solver.solve(plant.fs, tee=True, load_solutions=True)
+    plant_results = solver.solve(plant.fs, tee=True, load_solutions=True)
     
     save_CVs(plant, CVs_dict)
     save_states(plant, states_dict)
-    save_h2_production_rate(plant)
+    save_h2_production_rate(plant, h2_production_rate)
     
     iter_count += 1
-
-timer_stop = time.time()
-
-print(f'Elapsed time, in seconds: {timer_stop-timer_start:.3f}')
 ###
 
-
-def make_plots():
-    for i in controls_dict.keys():
-        fig = plt.figure()
-        ax = fig.subplots()
-        ax.plot(controls_dict[i],'b-')
-        for j in alias_dict.keys():
-            if i == j:
-                ax.plot(var_targets[alias_dict[j]].values(),'r--')
-                plt.title(alias_dict[j])
-        plt.show()
-    
-    for i in CVs_dict.keys():
-        fig = plt.figure()
-        ax = fig.subplots()
-        ax.plot(CVs_dict[i],'b-')
-        for j in alias_dict.keys():
-            if i == j:
-                ax.plot(var_targets[alias_dict[j]].values(),'r--')
-                fig.suptitle(alias_dict[j])
-        plt.show()
-    
+for i in controls_dict.keys():
     fig = plt.figure()
     ax = fig.subplots()
-    ax.plot(h2_production_rate, 'b-')
-    ax.plot(var_targets[alias_dict['fs.h2_mass_production']].values(), 'r--')
-    plt.title('h2 production rate')
-    
-    return None
+    ax.plot(controls_dict[i],'b-')
+    # ax.plot(sim_time_set/3600,controls_dict[i],'b-')
+    for j in alias_dict.keys():
+        if i == j:
+            ax.plot(var_targets[alias_dict[j]].values(),'r--')
+            # ax.plot(traj_time_set/3600,var_targets[alias_dict[j]].values(),'r--')
+            # ax.set_xlabel('Time (hr)')
+            plt.title(alias_dict[j])
+    # if i == 'fs.makeup_mix._flow_mol_makeup_ref' or i == 'fs.sweep_blower._flow_mol_inlet_ref':
+    #     ax.axhline(0, color='k', linestyle='--')
+    #     ax.axhline(5e4, color='k', linestyle='--')
+    # if i == 'fs.condenser_split.recycle_ratio' or i == 'fs.feed_recycle_split.recycle_ratio' or i == 'fs.sweep_recycle_split.recycle_ratio':
+    #     ax.axhline(0, color='k', linestyle='--')
+    # if i == 'fs.makeup_mix.makeup_mole_frac_comp_H2' or i == 'fs.makeup_mix.makeup_mole_frac_comp_H2O':
+    #     ax.axhline(1e-20, color='k', linestyle='--')
+    #     ax.axhline(1.001, color='k', linestyle='--')
+    plt.show()
 
+for i in CVs_dict.keys():
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.plot(CVs_dict[i],'g-')
+    # ax.plot(sim_time_set/3600,CVs_dict[i],'g-')
+    for j in alias_dict.keys():
+        if i == j:
+            ax.plot(var_targets[alias_dict[j]].values(),'r--')
+            # ax.plot(traj_time_set/3600,var_targets[alias_dict[j]].values(),'r--')
+            # ax.set_xlabel('Time (hr)')
+            fig.suptitle(alias_dict[j])
+    # if i == 'fs.soc_module.fuel_outlet_mole_frac_comp_H2' or i == 'fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]' or i == 'fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]':
+    #     ax.axhline(1e-20, color='k', linestyle='--')
+    #     ax.axhline(1.001, color='k', linestyle='--')
+    # if i == 'fs.feed_heater._temperature_outlet_ref' or i == 'fs.soc_module._temperature_fuel_outlet_ref' or i == 'fs.sweep_heater._temperature_outlet_ref' or i == 'fs.soc_module._temperature_oxygen_outlet_ref':
+    #     ax.axhline(273.15, color='k', linestyle='--')
+    #     ax.axhline(2500, color='k', linestyle='--')
+    plt.show()
 
-
+fig = plt.figure()
+ax = fig.subplots()
+ax.plot(h2_production_rate, 'g-')
+ax.plot(var_targets[alias_dict['fs.h2_mass_production']].values(), 'r--')
+# ax.plot(sim_time_set/3600,h2_production_rate, 'g-')
+# ax.plot(traj_time_set/3600,var_targets[alias_dict['fs.h2_mass_production']].values(), 'r--')
+# ax.set_xlabel('Time (hr)')
+plt.title('$\mathrm{H_2}$ production rate')
