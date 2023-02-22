@@ -249,6 +249,12 @@ def create_model(tset, nfe, plant=True, from_min=True):
     m.fs.n1 = pyo.Var(m.fs.time,
                       initialize=0,
                       domain=pyo.NonNegativeReals)
+    m.fs.n2 = pyo.Var(m.fs.time,
+                      initialize=0,
+                      domain=pyo.NonNegativeReals)
+    m.fs.n3 = pyo.Var(m.fs.time,
+                      initialize=0,
+                      domain=pyo.NonNegativeReals)
     
     # soec.fuel_electrode.p = pyo.Var(m.fs.time,
     #                                 soec.fuel_electrode.ixnodes,
@@ -270,7 +276,8 @@ def create_model(tset, nfe, plant=True, from_min=True):
         
         @m.fs.Constraint(m.fs.time)
         def makeup_mole_frac_eqn2(b, t):
-            return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - 1e-14 - b.n[t]
+            return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == \
+                0.999 - 1e-14 - b.n[t]
         
         @m.fs.Constraint(m.fs.time)
         def vgr_ratio_eqn(b, t):
@@ -281,14 +288,19 @@ def create_model(tset, nfe, plant=True, from_min=True):
             return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
                 b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - b.p[t]
         
-        # @m.fs.Constraint(m.fs.time)
-        # def feed_recycle_ratio_eqn(b, t):
-        #     return b.fs.feed_recycle_split.recycle_ratio[t] == 0.999 - b.r[t]
-        
         @m.fs.Constraint(m.fs.time)
         def condenser_outlet_temp_eqn(b, t):
             return b.condenser_flash.control_volume.properties_out[t] \
                 .temperature == 273.15 + 50 + b.p1[t] - b.n1[t]
+
+        @m.fs.Constraint(m.fs.time)
+        def feed_recycle_ratio_eqn(b, t):
+            return b.feed_recycle_split.recycle_ratio[t] == 0.999 - b.n2[t]
+        
+        @m.fs.Constraint(m.fs.time)
+        def sweep_recycle_ratio_eqn(b, t):
+            return b.sweep_recycle_split.recycle_ratio[t] == 0.999 - b.n3[t]
+
         
         # @soec.fuel_electrode.Constraint(m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
         # def dTdz_electrode_UB_rule(b, t, ix, iz):
@@ -477,6 +489,7 @@ def create_obj_expr(m):
     #                           m.fs.condenser_flash.heat_duty[m.fs.time.prev(t)])**2
     #                         for t in m.fs.time if t != m.fs.time.first())
 
+    # mv_multiplier = 1e-02
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
           - soc_fuel_outlet_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
@@ -505,13 +518,15 @@ def create_obj_expr(m):
         (m.fs.feed_recycle_mix.mixed_state[t].mole_frac_comp['H2']
           - hydrogen_in[t_base + t])**2 for t in m.fs.time)
     
-    # m.fs.feed_recycle_ratio_eqn.activate()
-    # expr += 1e+03 * sum(m.fs.r[t] for t in m.fs.time)
-    
     m.fs.condenser_outlet_temp_eqn.activate()
     expr += 1e+03 * sum(m.fs.p1[t] + m.fs.n1[t] for t in m.fs.time)
-    
-    if (t_base <= 1050.0) or (t_base >= 11850.0):
+
+    m.fs.feed_recycle_ratio_eqn.activate()
+    expr += 1e+03 * sum(m.fs.n2[t] for t in m.fs.time)
+    m.fs.sweep_recycle_ratio_eqn.activate()
+    expr += 1e+03 * sum(m.fs.n3[t] for t in m.fs.time)
+
+    if (t_base <= t_start) or (t_base >= t_start + t_ramp + t_settle + t_ramp):
         m.fs.makeup_mole_frac_eqn1.activate()
         m.fs.makeup_mole_frac_eqn2.activate()
         m.fs.vgr_ratio_eqn.activate()
