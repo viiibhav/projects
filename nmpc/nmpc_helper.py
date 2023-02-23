@@ -14,6 +14,7 @@ from pyomo.dae import DerivativeVar
 # flatten.generate_sliced_components = generate_sliced_components
 from pyomo.dae.flatten import generate_sliced_components
 from pyomo.dae.flatten import flatten_dae_components
+from pyomo.util.calc_var_value import calculate_variable_from_constraint
 
 import idaes
 import idaes.core.util.scaling as iscale
@@ -21,6 +22,7 @@ from idaes.core.solvers import petsc
 from idaes.core.solvers import use_idaes_solver_configuration_defaults
 import idaes.logger as idaeslog
 import idaes.core.util.model_serializer as ms
+from idaes.core.util.model_statistics import degrees_of_freedom
 from idaes.models.control.controller import (
     ControllerType,
     ControllerMVBoundType,
@@ -805,7 +807,7 @@ def initialize_model_with_petsc(m):
 def run_simulation(time_set=nmpc_params["time_set_PI"],
                    dynamic_simulation=True,
                    optimize_steady_state=True,
-                   operating_scenario=OperatingScenario.maximum_production):
+                   operating_scenario=OperatingScenario.power_mode):
 
     def set_indexed_variable_bounds(var, bounds):
         for idx, subvar in var.items():
@@ -815,13 +817,18 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
     idaes.cfg.ipopt.options.nlp_scaling_method = "user-scaling"
     idaes.cfg.ipopt["options"]["linear_solver"] = "ma57"
     idaes.cfg.ipopt.options.OF_ma57_automatic_scaling = "yes"
-    idaes.cfg.ipopt["options"]["max_iter"] = 250
+    idaes.cfg.ipopt["options"]["max_iter"] = 400
     idaes.cfg.ipopt["options"]["halt_on_ampl_error"] = "no"
 
     m = pyo.ConcreteModel()
     if dynamic_simulation:
+        # setpoints = ["maximum_H2", "maximum_H2",
+        #              "minimum_H2", "minimum_H2",
+        #              "maximum_H2", "maximum_H2"]
         setpoints = ["maximum_H2", "maximum_H2",
-                     "minimum_H2", "minimum_H2",
+                     "neutral",
+                     "power", "power",
+                     "neutral",
                      "maximum_H2", "maximum_H2"]
 
         m.fs = SoecStandaloneFlowsheet(
@@ -844,7 +851,7 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
     solver = pyo.SolverFactory("ipopt")
 
     if dynamic_simulation:
-        m.fs.deactivate_shortcut()
+        # m.fs.deactivate_shortcut()
 
         antiwindup = ControllerAntiwindupType.BACK_CALCULATION
         inner_controller_pairs = ComponentMap()
@@ -908,10 +915,12 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         m.fs.add_controllers(variable_pairs)
 
         # K = 0
-        K = 0.25 * 10e4
-        tau_I = 30*60
+        K = 10e4
+        tau_I = 15*60
+        tau_D = 5*60
         m.fs.feed_heater_inner_controller.gain_p.fix(K)
         m.fs.feed_heater_inner_controller.gain_i.fix(K/tau_I)
+        # m.fs.feed_heater_inner_controller.gain_d.fix(K * tau_D)
         m.fs.feed_heater_inner_controller.mv_lb = 0
         m.fs.feed_heater_inner_controller.mv_ub = 10e6
         m.fs.feed_heater_inner_controller.smooth_eps = 1000
@@ -919,18 +928,20 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
             m.fs.feed_heater_inner_controller.gain_b.fix(0.5/tau_I)
 
         # K = 0
-        K = 0.25 * 20e4
-        tau_I = 30*60
+        K =20e4
+        tau_I = 15*60
+        tau_D = 5*60
         m.fs.sweep_heater_inner_controller.gain_p.fix(K)
         m.fs.sweep_heater_inner_controller.gain_i.fix(K/tau_I)
+        # m.fs.sweep_heater_inner_controller.gain_d.fix(K * tau_D)
         m.fs.sweep_heater_inner_controller.mv_lb = 0
         m.fs.sweep_heater_inner_controller.mv_ub = 10e6
         m.fs.sweep_heater_inner_controller.smooth_eps = 1000
         if antiwindup == ControllerAntiwindupType.BACK_CALCULATION:
             m.fs.sweep_heater_inner_controller.gain_b.fix(0.5/tau_I)
         
-        # K = 0.75
-        K = 0
+        K = 0.75
+        # K = 0
         tau_I = 60*60
         m.fs.feed_heater_outer_controller.gain_p.fix(K)
         # m.fs.feed_heater_outer_controller.gain_i.fix(K/tau_I)
@@ -938,8 +949,8 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         # m.fs.feed_heater_outer_controller.mv_ub = 4e6
         # m.fs.feed_heater_outer_controller.smooth_eps = 0.1
 
-        # K = 0.75
-        K = 0
+        K = 0.75
+        # K = 0
         tau_I = 60*60
         m.fs.sweep_heater_outer_controller.gain_p.fix(K)
         # m.fs.sweep_heater_outer_controller.gain_i.fix(K/tau_I)
@@ -977,12 +988,17 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
 
         create_ramping_eqns(m.fs, m.fs.manipulated_variables, 1)
 
+        for ctrl in m.fs.controller_set:
+            iscale.calculate_scaling_factors(ctrl)
+        for ctrl in m.fs.controller_set:
+            iscale.calculate_scaling_factors(ctrl)
+
         time_nfe = len(m.fs.time) - 1
         pyo.TransformationFactory("dae.finite_difference").apply_to(
             m.fs, nfe=time_nfe, wrt=m.fs.time, scheme="BACKWARD"
         )
-        apply_custom_variable_scaling(m)
-        apply_custom_constraint_scaling(m)
+        # apply_custom_variable_scaling(m)
+        # apply_custom_constraint_scaling(m)
 
         if operating_scenario == OperatingScenario.minimum_production:
             ms.from_json(
@@ -1029,7 +1045,8 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         alias_dict[m.fs.sweep_heater_outer_controller.setpoint] = "sweep_outlet_temperature"
         alias_dict[m.fs.makeup_mix.makeup_mole_frac_comp_H2] = "makeup_mole_frac_comp_H2"
         alias_dict[m.fs.makeup_mix.makeup_mole_frac_comp_H2O] = "makeup_mole_frac_comp_H2O"
-        alias_dict[m.fs.condenser_hx.cold_side_inlet.flow_mol] = "cooling_water_feed"
+        # alias_dict[m.fs.condenser_flash.heat_duty] = "condenser_heat_duty"
+        alias_dict[m.fs.condenser_flash.vap_outlet.temperature] = "condenser_hot_outlet_temperature"
 
         alias_dict[m.fs.sweep_recycle_controller.mv_ref] = "sweep_recycle_ratio"
         alias_dict[m.fs.sweep_recycle_controller.setpoint] = "sweep_outlet_temperature"
@@ -1054,10 +1071,45 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         # Need to initialize the setpoint for the inner controller or else it starts with the default value 0.5.
         m.fs.feed_heater_inner_controller.setpoint[0].value = m.fs.feed_heater_outer_controller.mv_ref[0].value
         m.fs.sweep_heater_inner_controller.setpoint[0].value = m.fs.sweep_heater_outer_controller.mv_ref[0].value
+        # m.fs.feed_heater_inner_controller.negative_pv[0.0].value = - m.fs.soc_module.fuel_properties_in[0.0].temperature
+        # m.fs.sweep_heater_inner_controller.negative_pv[0.0].value = - m.fs.soc_module.oxygen_properties_in[0.0].temperature
+
+        for ctrl in m.fs.controller_set:
+            if hasattr(ctrl, "mv_eqn"):
+                calculate_variable_from_constraint(ctrl.manipulated_var[0], ctrl.mv_eqn[0])
 
         idaeslog.solver_log.tee = True
-        results = initialize_model_with_petsc(m)
-        # traj = results.trajectory
+        results = petsc.petsc_dae_by_time_element(
+            m,
+            time=m.fs.time,
+            # timevar=m.fs.timevar,
+            keepfiles=True,
+            symbolic_solver_labels=True,
+            ts_options={
+                "--ts_type": "beuler",
+                "--ts_dt": 10,
+                "--ts_rtol": 1e-3,
+                # "--ts_adapt_clip":"0.001,300",
+                # "--ksp_monitor":"",
+                "--ts_adapt_dt_min": 1e-6,
+                # "--ts_adapt_dt_max": 300,
+                "--ksp_rtol": 1e-10,
+                "--snes_type": "newtontr",
+                # "--ts_max_reject": 200,
+                # "--snes_monitor":"",
+                "--ts_monitor": "",
+                "--ts_save_trajectory": 1,
+                "--ts_trajectory_type": "visualization",
+                "--ts_max_snes_failures": 1000,
+                # "--show_cl":"",
+            },
+            skip_initial=False,
+            initial_solver="ipopt",
+            # vars_stub="soec_flowsheet_prototype",
+            # trajectory_save_prefix="soec_flowsheet_prototype",
+        )
+        # assert False
+        traj = results.trajectory
 
         save_results(m, np.array(m.fs.time)[1:], results.trajectory, "PI_ramping")
 
@@ -1090,7 +1142,7 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
                 set_indexed_variable_bounds(m.fs.condenser_flash.heat_duty, (None, 0))
                 set_indexed_variable_bounds(m.fs.condenser_split.split_fraction, (0.00001, 1))
                 m.fs.feed_recycle_split.out.mole_frac_comp[0, "H2"].bounds = (0.1, 0.75)
-                set_indexed_variable_bounds(m.fs.condenser_split.recycle_ratio, (0.000001, 50))
+                set_indexed_variable_bounds(m.fs.condenser_split.recycle_ratio, (0.000001, 5))
                 @m.fs.Constraint(m.fs.time)
                 def current_density_average_limit_eqn(b, t):
                     return sum([b.soc_module.solid_oxide_cell.current_density[t, iz]
@@ -1126,8 +1178,8 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
                 m.fs.feed_recycle_split.recycle_ratio.fix(1)
                 m.fs.sweep_recycle_split.recycle_ratio.fix(1)
                 m.fs.condenser_split.recycle_ratio.fix(1)
-                m.fs.sweep_blower.inlet.flow_mol.fix(2261.016)
-                m.fs.feed_medium_exchanger.tube_inlet.flow_mol.fix(1508.836)
+                m.fs.sweep_blower.inlet.flow_mol.fix(4000)
+                m.fs.makeup_mix.makeup.flow_mol.fix(630.5)
                 # set_indexed_variable_bounds(m.fs.condenser_split.recycle_ratio, (0.000001, 50))
 
                 m.fs.condenser_flash.control_volume.properties_out[:].temperature.fix(273.15 + 50)
@@ -1147,6 +1199,11 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
                     m.fs.h2_mass_production.fix(2)
                 m.fs.feed_recycle_split.out.mole_frac_comp[0, "H2O"].bounds = (0.25, 0.4)
                 set_indexed_variable_bounds(m.fs.soc_module.solid_oxide_cell.current_density, (-1.3e4, 5.2e3))
+                set_indexed_variable_bounds(m.fs.sweep_blower.inlet.flow_mol, (1.8e3, None))
+                # set_indexed_variable_bounds(m.fs.soc_module.solid_oxide_cell.potential, (1.18, 1.30))
+
+                m.fs.feed_recycle_split.recycle_ratio.fix(1)
+                m.fs.sweep_recycle_split.recycle_ratio.fix(1)
 
                 m.fs.condenser_split.split_fraction[:, "recycle"].fix(0.0001)
                 m.fs.condenser_split.split_fraction[:, "out"].value = 0.9999
@@ -1167,52 +1224,71 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
                 return b.feed_recycle_mix.mixed_state[t].mole_frac_comp["H2"] >= 0.05
 
 
+
             optimization_constraints.append(m.fs.sweep_concentration_eqn)
             optimization_constraints.append(m.fs.min_h2_feed_eqn)
 
+            optimization_constraints.append(m.fs.thermal_gradient_eqn_1)
+            optimization_constraints.append(m.fs.thermal_gradient_eqn_2)
+            optimization_constraints.append(m.fs.thermal_gradient_eqn_3)
+            optimization_constraints.append(m.fs.thermal_gradient_eqn_4)
+
         else:
+            if operating_scenario == OperatingScenario.maximum_production:
+                setpoint = "maximum_H2"
+            elif operating_scenario == OperatingScenario.minimum_production:
+                setpoint = "minimum_H2"
+            elif operating_scenario == OperatingScenario.neutral:
+                setpoint = "neutral"
+            elif operating_scenario == OperatingScenario.power_mode:
+                setpoint = "power"
+            else:
+                raise Exception
+
             alias_dict = ComponentMap()
             alias_dict[m.fs.soc_module.potential_cell] = "potential"
-            alias_dict[m.fs.feed_translator.inlet.flow_mol] = "steam_feed_rate"
+            alias_dict[m.fs.makeup_mix.makeup.flow_mol] = "makeup_feed_rate"
             alias_dict[m.fs.sweep_blower.inlet.flow_mol] = "sweep_feed_rate"
             alias_dict[m.fs.feed_heater.electric_heat_duty] = "feed_heater_duty"
             alias_dict[m.fs.sweep_heater.electric_heat_duty] = "sweep_heater_duty"
             alias_dict[m.fs.feed_recycle_split.recycle_ratio] = "fuel_recycle_ratio"
             alias_dict[m.fs.sweep_recycle_split.recycle_ratio] = "sweep_recycle_ratio"
-            alias_dict[m.fs.feed_hydrogen_water_ratio] = "feed_hydrogen_water_ratio"
+            alias_dict[m.fs.condenser_flash.vap_outlet.temperature] = "condenser_hot_outlet_temperature"
+            alias_dict[m.fs.makeup_mix.makeup_mole_frac_comp_H2] = "makeup_mole_frac_comp_H2"
+            alias_dict[m.fs.makeup_mix.makeup_mole_frac_comp_H2O] = "makeup_mole_frac_comp_H2O"
+            alias_dict[m.fs.condenser_split.recycle_ratio] = "vgr_recycle_ratio"
 
-            df = pd.read_csv("soec_flowsheet_operating_conditions_full_control.csv", index_col=0)
+            df = pd.read_csv("soec_flowsheet_operating_conditions.csv", index_col=0)
 
+            t_naught = m.fs.time.first()
             for var in m.fs.manipulated_variables:
                 shortname = var.name.split(".")[-1]
                 alias = alias_dict[var]
-                var[t0].fix(float(df[alias][setpoints[0]]))
+                var[t_naught].fix(float(df[alias][setpoint]))
 
-        optimization_constraints.append(m.fs.thermal_gradient_eqn_1)
-        optimization_constraints.append(m.fs.thermal_gradient_eqn_2)
-        optimization_constraints.append(m.fs.thermal_gradient_eqn_3)
-        optimization_constraints.append(m.fs.thermal_gradient_eqn_4)
+            assert degrees_of_freedom(m) == 0
 
         jac_unscaled, jac_scaled, nlp = iscale.constraint_autoscale_large_jac(m)
         results = solver.solve(m, tee=True)
         pyo.assert_optimal_termination(results)
 
-        m.fs.h2_mass_production.unfix()
-        m.fs.condenser_split.split_fraction.unfix()
-        m.fs.feed_medium_exchanger.tube_inlet.flow_mol.unfix()
-        m.fs.condenser_flash.control_volume.properties_out[:].temperature.unfix()
-
-        set_indexed_variable_bounds(m.fs.feed_recycle_split.split_fraction, (0, 1))
-        set_indexed_variable_bounds(m.fs.sweep_recycle_split.split_fraction, (0, 1))
-        set_indexed_variable_bounds(m.fs.condenser_split.split_fraction, (0, 1))
-
-        m.fs.initialize_condenser_hx(outlvl=idaeslog.DEBUG)
-        for con in optimization_constraints:
-            con.deactivate()
-        for var in m.fs.manipulated_variables:
-            var.fix()
-        results = solver.solve(m, tee=True)
-        pyo.assert_optimal_termination(results)
+        # m.fs.h2_mass_production.unfix()
+        # m.fs.condenser_split.split_fraction.unfix()
+        # m.fs.feed_medium_exchanger.tube_inlet.flow_mol.unfix()
+        # m.fs.condenser_flash.control_volume.properties_out[:].temperature.unfix()
+        #
+        # set_indexed_variable_bounds(m.fs.feed_recycle_split.split_fraction, (0, 1))
+        # set_indexed_variable_bounds(m.fs.sweep_recycle_split.split_fraction, (0, 1))
+        # set_indexed_variable_bounds(m.fs.condenser_split.split_fraction, (0, 1))
+        #
+        # m.fs.initialize_condenser_hx(outlvl=idaeslog.DEBUG)
+        # #import pdb; pdb.set_trace()
+        # for con in optimization_constraints:
+        #     con.deactivate()
+        # for var in m.fs.manipulated_variables:
+        #     var.fix()
+        # results = solver.solve(m, tee=True)
+        # pyo.assert_optimal_termination(results)
 
 
 
@@ -1253,10 +1329,10 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         print(f"Feed hydrogen inlet: {pyo.value(m.fs.feed_recycle_mix.mixed_state[0].mole_frac_comp['H2'])}")
 
         print(f"Vent gas recirculation recycle ratio {pyo.value(m.fs.condenser_split.recycle_ratio[0])}")
-        print(f"Condenser cooling water feed rate: {pyo.value(m.fs.condenser_hx.cold_side_inlet.flow_mol[0])} mol/s")
-        print(f"Condenser hydrogen outlet temperature: {pyo.value(m.fs.condenser_hx.hot_side_outlet.temperature[0])} K")
-        # print(f"Condenser heat duty: {pyo.value(m.fs.condenser_flash.heat_duty[0])} W")
-        # print(f"Condenser hydrogen outlet temperature: {pyo.value(m.fs.condenser_flash.vap_outlet.temperature[0])} K")
+        # print(f"Condenser cooling water feed rate: {pyo.value(m.fs.condenser_hx.cold_side_inlet.flow_mol[0])} mol/s")
+        # print(f"Condenser hydrogen outlet temperature: {pyo.value(m.fs.condenser_hx.hot_side_outlet.temperature[0])} K")
+        print(f"Condenser heat duty: {pyo.value(m.fs.condenser_flash.heat_duty[0])} W")
+        print(f"Condenser hydrogen outlet temperature: {pyo.value(m.fs.condenser_flash.vap_outlet.temperature[0])} K")
 
 
         soc = m.fs.soc_module.solid_oxide_cell
@@ -1307,7 +1383,6 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         plt.title("PEN Temperature Gradient", fontsize=16)
 
         plt.show()
-
         results = None
         
     return m, results
