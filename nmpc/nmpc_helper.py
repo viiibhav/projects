@@ -124,14 +124,14 @@ def get_tracking_variables(m):
         m.fs.sweep_heater.electric_heat_duty,
         m.fs.sweep_heater._temperature_outlet_ref,
         m.fs.soc_module._temperature_oxygen_outlet_ref,
+        m.fs.stack_core_temperature,
         m.fs.feed_recycle_split.recycle_ratio,
         m.fs.sweep_recycle_split.recycle_ratio,
         # m.fs.sweep_recycle_split.mixed_state[0].mole_frac_comp['O2'],
         # m.fs.feed_recycle_mix.mixed_state[0].mole_frac_comp['H2'],
         m.fs.condenser_split.recycle_ratio,
-        m.fs.stack_core_temperature,
-        m.fs.condenser_flash.heat_duty,
-        # m.fs.condenser_hx._flow_mol_cold_side_inlet_ref,
+        # m.fs.condenser_flash.heat_duty,
+        m.fs.condenser_flash.vap_outlet.temperature,
         m.fs.condenser_hx._temperature_hot_side_outlet_ref,
         m.fs.makeup_mix.makeup_mole_frac_comp_H2,
         m.fs.makeup_mix.makeup_mole_frac_comp_H2O,
@@ -158,7 +158,7 @@ def get_manipulated_variables(m):
 
 
 # =============================================================================
-def get_h2_production_target(m, reversible_mode=False):
+def get_h2_production_target(m, reversible_mode=True):
     df = pd.read_csv(
         "./../../soec_flowsheet_operating_conditions.csv",
         index_col=0,
@@ -197,14 +197,14 @@ def get_h2_production_target(m, reversible_mode=False):
     return h2_target
 
 
-def get_MV_targets(m):
+def get_tracking_targets(m):
     df = pd.read_csv(
         "./../../soec_flowsheet_operating_conditions.csv",
         index_col=0,
     )
 
-    def get_setpoint_trajectory(var, reversible_mode=False):
-        alias = alias_dict[var.name]
+    def get_setpoint_trajectory(alias, reversible_mode=False):
+        # alias = alias_dict[var.name]
         if reversible_mode:
             sp_hydrogen_hi = df[alias]["maximum_H2"]
             sp_hydrogen_lo = df[alias]["power"]
@@ -236,14 +236,14 @@ def get_MV_targets(m):
         
         return var_target
     
-    MV_targets = {alias: {} for alias in alias_dict.values()}
-    tracking_variables = get_tracking_variables(m)
-    for var in tracking_variables:
-        alias = alias_dict[var.name]
-        target = get_setpoint_trajectory(var)
-        MV_targets[alias] = target
+    tracking_targets = {alias: {} for alias in alias_dict.values()}
+    # tracking_variables = get_tracking_variables(m)
+    for alias in alias_dict.values():
+        # alias = alias_dict[var.name]
+        target = get_setpoint_trajectory(alias)
+        tracking_targets[alias] = target
     
-    return MV_targets
+    return tracking_targets
 
 
 def get_h2_target_for_control_horizon(m, iter):
@@ -255,58 +255,49 @@ def get_h2_target_for_control_horizon(m, iter):
     return h2_target_for_horizon
 
 
-def get_MV_targets_for_control_horizon(m, iter):
+def get_tracking_targets_for_control_horizon(m, iter):
     tset = m.fs.time
-    MV_targets = get_MV_targets(m)
-    MV_targets_for_horizon = {alias: [] for alias in alias_dict.values()}
+    tracking_targets = get_tracking_targets(m)
+    tracking_targets_for_horizon = {alias: [] for alias in alias_dict.values()}
     for alias in alias_dict.values():
-        target_list = list(MV_targets[alias].values())
+        target_list = list(tracking_targets[alias].values())
         target_for_horizon = target_list[iter:iter+len(tset)]
         target_for_horizon = {t: mv for t, mv in zip(tset, target_for_horizon)}
-        MV_targets_for_horizon[alias] = target_for_horizon
-    return MV_targets_for_horizon
+        tracking_targets_for_horizon[alias] = target_for_horizon
+    return tracking_targets_for_horizon
     
 
-def tracking_objective_simple(m):
-    h2_target = {t: 0.4 for t in m.fs.time}
-    return sum((m.fs.h2_mass_production[t] - h2_target[t])**2 for t in m.fs.time)
-
-
-def tracking_objective(m):
-    h2_target = get_h2_production_target(m)
-    return sum((m.fs.h2_mass_production[t] - h2_target[t])**2 for t in m.fs.time)
-
-
-def make_tracking_objective_with_MVs(m, iter):
+def make_tracking_objective(m, iter):
     h2_target = get_h2_target_for_control_horizon(m, iter)
-    MV_targets = get_MV_targets_for_control_horizon(m, iter)
+    tracking_targets = get_tracking_targets_for_control_horizon(m, iter)
     
-    potential = MV_targets['potential']
-    soc_fuel_outlet_mole_frac_comp_H2 = MV_targets['soc_fuel_outlet_mole_frac_comp_H2']
-    makeup_feed_rate = MV_targets['makeup_feed_rate']
-    sweep_feed_rate = MV_targets['sweep_feed_rate']
-    feed_heater_duty = MV_targets['feed_heater_duty']
-    feed_heater_outlet_temperature = MV_targets['feed_heater_outlet_temperature']
-    fuel_outlet_temperature = MV_targets['fuel_outlet_temperature']
-    sweep_heater_duty = MV_targets['sweep_heater_duty']
-    sweep_heater_outlet_temperature = MV_targets['sweep_heater_outlet_temperature']
-    sweep_outlet_temperature = MV_targets['sweep_outlet_temperature']
-    fuel_recycle_ratio = MV_targets['fuel_recycle_ratio']
-    sweep_recycle_ratio = MV_targets['sweep_recycle_ratio']
-    vgr_recycle_ratio = MV_targets['vgr_recycle_ratio']
-    condenser_heat_duty = MV_targets['condenser_heat_duty']
-    # cooling_water_feed = MV_targets['cooling_water_feed']
-    stack_core_temperature = MV_targets['stack_core_temperature']
-    condenser_hot_outlet_temperature = MV_targets['condenser_hot_outlet_temperature']
-    makeup_mole_frac_comp_H2 = MV_targets['makeup_mole_frac_comp_H2']
-    makeup_mole_frac_comp_H2O = MV_targets['makeup_mole_frac_comp_H2O']
+    potential = tracking_targets['potential']
+    soc_fuel_outlet_mole_frac_comp_H2 = tracking_targets['soc_fuel_outlet_mole_frac_comp_H2']
+    makeup_feed_rate = tracking_targets['makeup_feed_rate']
+    sweep_feed_rate = tracking_targets['sweep_feed_rate']
+    feed_heater_duty = tracking_targets['feed_heater_duty']
+    feed_heater_outlet_temperature = tracking_targets['feed_heater_outlet_temperature']
+    fuel_outlet_temperature = tracking_targets['fuel_outlet_temperature']
+    sweep_heater_duty = tracking_targets['sweep_heater_duty']
+    sweep_heater_outlet_temperature = tracking_targets['sweep_heater_outlet_temperature']
+    sweep_outlet_temperature = tracking_targets['sweep_outlet_temperature']
+    fuel_recycle_ratio = tracking_targets['fuel_recycle_ratio']
+    sweep_recycle_ratio = tracking_targets['sweep_recycle_ratio']
+    oxygen_out = tracking_targets["oxygen_out"]
+    hydrogen_in = tracking_targets["hydrogen_in"]
+    vgr_recycle_ratio = tracking_targets['vgr_recycle_ratio']
+    # condenser_heat_duty = tracking_targets['condenser_heat_duty']
+    stack_core_temperature = tracking_targets['stack_core_temperature']
+    condenser_hot_outlet_temperature = tracking_targets['condenser_hot_outlet_temperature']
+    makeup_mole_frac_comp_H2 = tracking_targets['makeup_mole_frac_comp_H2']
+    makeup_mole_frac_comp_H2O = tracking_targets['makeup_mole_frac_comp_H2O']
     
     # plt.figure()
     # plt.plot(list(m.fs.time), h2_target.values())
 
-    def tracking_objective_with_MVs(m):
+    def tracking_objective(m):
         expr = 0
-        expr += 1e+02 * sum(
+        expr += 1e+00 * sum(
             (m.fs.h2_mass_production[t] - h2_target[t])**2 for t in m.fs.time
             if t != m.fs.time.first())
 
@@ -315,99 +306,156 @@ def make_tracking_objective_with_MVs(m, iter):
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.makeup_mix.makeup.flow_mol[t]
              - makeup_feed_rate[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.sweep_blower.inlet.flow_mol[t]
              - sweep_feed_rate[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.soc_module.potential_cell[t]
              - potential[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e+00 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
             (m.fs.feed_recycle_split.recycle_ratio[t]
              - fuel_recycle_ratio[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e+00 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
             (m.fs.sweep_recycle_split.recycle_ratio[t]
              - sweep_recycle_ratio[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e-06 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e-11 * sum(
             (m.fs.feed_heater.electric_heat_duty[t]
              - feed_heater_duty[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e-07 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e-13 * sum(
             (m.fs.sweep_heater.electric_heat_duty[t]
              - sweep_heater_duty[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e+04 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
             (m.fs.condenser_split.recycle_ratio[t]
              - vgr_recycle_ratio[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        # expr += mv_multiplier * 1e-04 * sum(
-            # (m.fs.condenser_hx.cold_side_inlet.flow_mol[t]
-             # - cooling_water_feed[t])**2 for t in m.fs.time
-             # if t != m.fs.time.first())
-        expr += mv_multiplier * 1e-07 * sum(
-            (m.fs.condenser_flash.heat_duty[t]
-              - condenser_heat_duty[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e+14 * sum(
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e-03 * sum(
+            (m.fs.condenser_flash.vap_outlet.temperature[t]
+             - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
             (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
               - makeup_mole_frac_comp_H2[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
              - makeup_mole_frac_comp_H2O[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
 
-        mv_multiplier = 1e-06
+        # Penalties on oscillation of manipulated variables
+        expr += mv_multiplier * 1e-12 * sum(
+            (m.fs.feed_heater.electric_heat_duty[t]
+             - m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+            for t in m.fs.time
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e-14 * sum(
+            (m.fs.sweep_heater.electric_heat_duty[t]
+             - m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
+            for t in m.fs.time
+            if t != m.fs.time.first()
+        )
+
+        # Penalties on controlled variable deviations
+        # mv_multiplier = 1e-06
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
              - soc_fuel_outlet_mole_frac_comp_H2[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.feed_heater.outlet.temperature[t]
              - feed_heater_outlet_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.sweep_heater.outlet.temperature[t]
              - sweep_heater_outlet_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.soc_module.fuel_outlet.temperature[t]
              - fuel_outlet_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.soc_module.oxygen_outlet.temperature[t]
              - sweep_outlet_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
-        expr += mv_multiplier * 1e-03 * sum(
-            (m.fs.condenser_hx.hot_side_outlet.temperature[t]
-             - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.stack_core_temperature[t]
              - stack_core_temperature[t])**2 for t in m.fs.time
-            if t != m.fs.time.first())
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
+            (m.fs.sweep_recycle_split.mixed_state[t].mole_frac_comp['O2']
+             - oxygen_out[t])**2 for t in m.fs.time
+            if t != m.fs.time.first()
+        )
+        expr += mv_multiplier * 1e+01 * sum(
+            (m.fs.feed_recycle_mix.mixed_state[t].mole_frac_comp['H2']
+             - hydrogen_in[t])**2 for t in m.fs.time
+            if t != m.fs.time.first()
+        )
 
-        # Penalties on oscillations
-        # expr += 1e+01 * sum(
-        # expr += 0.1 * sum(
-        #     (m.fs.sweep_recycle_split.recycle_split_fraction[t] -
-        #       m.fs.sweep_recycle_split.recycle_split_fraction[m.fs.time.prev(t)])**2
-        #     for t in m.fs.time if t != m.fs.time.first())
+        # l1-penalties
+        m.fs.condenser_outlet_temp_eqn.activate()
+        expr += 1e+03 * sum(m.fs.p1[t] + m.fs.n1[t] for t in m.fs.time)
 
-        # expr += 1e+01 * sum(
-        #     (m.fs.h2_mass_production[t] -
-        #      m.fs.h2_mass_production[m.fs.time.prev(t)])**2
-        #     for t in m.fs.time if t != m.fs.time.first())
-    
+        m.fs.feed_recycle_ratio_eqn.activate()
+        expr += 1e+03 * sum(m.fs.n2[t] for t in m.fs.time)
+        m.fs.sweep_recycle_ratio_eqn.activate()
+        expr += 1e+03 * sum(m.fs.n3[t] for t in m.fs.time)
+
+        t_pre_ramp_iteration = nmpc_params['t_start'] / nmpc_params['step'] + 1
+        t_post_ramp_iteration = (
+            nmpc_params['t_start'] +
+            nmpc_params['t_ramp'] +
+            nmpc_params['t_settle'] +
+            nmpc_params['t_ramp']
+        ) + 1
+        if (iter <= t_pre_ramp_iteration) or (iter >= t_post_ramp_iteration):
+            m.fs.makeup_mole_frac_eqn1.activate()
+            m.fs.makeup_mole_frac_eqn2.activate()
+            m.fs.vgr_ratio_eqn.activate()
+            m.fs.makeup_mole_frac_sum_eqn.deactivate()
+            expr += 1e+03 * sum(m.fs.p[t]
+                                for t in m.fs.time)
+            expr += 1e+03 * sum(m.fs.n[t]
+                                for t in m.fs.time)
+            expr += 1e+03 * sum(m.fs.q[t]
+                                for t in m.fs.time)
+        else:
+            m.fs.makeup_mole_frac_eqn1.deactivate()
+            m.fs.makeup_mole_frac_eqn2.deactivate()
+            m.fs.vgr_ratio_eqn.deactivate()
+            m.fs.makeup_mole_frac_sum_eqn.activate()
+            expr += 1e+03 * sum(m.fs.p[t]
+                                for t in m.fs.time)
+
         return expr
     
     if hasattr(m, 'obj'):
         m.del_component('obj')
-    m.obj = Objective(rule=tracking_objective_with_MVs, sense=pyo.minimize)
+    m.obj = Objective(rule=tracking_objective, sense=pyo.minimize)
 
     return None
 
@@ -535,16 +583,16 @@ def apply_custom_variable_scaling(m):
 
 
 def apply_custom_constraint_scaling(m):
-    sf = 1e-02
-    for i, c in m.fs.soc_module.solid_oxide_cell.fuel_electrode.conc_mol_comp_eqn.items():
-        sf_old = iscale.get_constraint_transform_applied_scaling_factor(c)
-        sf_new = sf * sf_old
-        iscale.constraint_scaling_transform(c, sf_new)
+    # sf = 1e-02
+    # for i, c in m.fs.soc_module.solid_oxide_cell.fuel_electrode.conc_mol_comp_eqn.items():
+    #     sf_old = iscale.get_constraint_transform_applied_scaling_factor(c)
+    #     sf_new = sf * sf_old
+    #     iscale.constraint_scaling_transform(c, sf_new)
 
     sf = 410
     for _, c in m.fs.condenser_flash.control_volume.enthalpy_balances.items():
         sf_old = iscale.get_constraint_transform_applied_scaling_factor(c)
-        sf_new = sf_old/sf
+        sf_new = sf_old / sf
         iscale.constraint_scaling_transform(c, sf_new, overwrite=True)
 
     # sf = 6.76e-07
@@ -592,7 +640,7 @@ def apply_custom_constraint_scaling(m):
 
 def check_scaling(m, large=1e+03, small=1e-03):
     jac, nlp = iscale.get_jacobian(m, scaled=True)
-    jac_csc = jac.tocsc()
+    # jac_csc = jac.tocsc()
     djac = jac.toarray()
     # print("Extreme Jacobian entries:")
     # for i in iscale.extreme_jacobian_entries(jac=jac, nlp=nlp, large=1E3, small=0):
@@ -659,15 +707,15 @@ def check_incidence_analysis(m):
     
     from idaes.core.util.model_statistics import (
         unused_variables_set,
-        fixed_unused_variables_set,
+        # fixed_unused_variables_set,
         variables_near_bounds_set,
     )
-    print(f"Unused variables:")
+    print("Unused variables:")
     for var in unused_variables_set(m):
         if not var.fixed:
             if not isinstance(var.parent_component(), DerivativeVar):
                 print(f" {var.name}")
-    print(f"Variables near bounds:")
+    print("Variables near bounds:")
     for var in variables_near_bounds_set(m, tol=1e-6):
         print(f" {var.name}")
     
@@ -711,6 +759,7 @@ def get_large_residuals(m, tol=1e+04):
         large_residuals_set, number_large_residuals)
     rs = large_residuals_set(m, tol=tol)
     rn = number_large_residuals(m, tol=tol)
+    return rs, rn
 
 
 def add_penalty_formulation(m, tol=1e+03):
