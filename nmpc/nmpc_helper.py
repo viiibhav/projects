@@ -42,8 +42,8 @@ import matplotlib.pyplot as plt
 def get_time_coordinates():
     t_start = 0.5 * 60 * 60
     t_ramp = 0.5 * 60 * 60
-    t_settle = 3 * 60 * 60
-    t_end = 3 * 60 * 60
+    t_settle = 2 * 60 * 60
+    t_end = 1 * 60 * 60
     time_set_PI = [0,
                    t_start,
                    t_start + t_ramp,
@@ -98,16 +98,14 @@ alias_dict = {
     "fs.sweep_heater.electric_heat_duty": "sweep_heater_duty",
     "fs.sweep_heater._temperature_outlet_ref": "sweep_heater_outlet_temperature",
     "fs.soc_module._temperature_oxygen_outlet_ref": "sweep_outlet_temperature",
-    #TODO: stack_core_temperature references only apply in SOEC mode, not sure how to implement.
     "fs.stack_core_temperature": "stack_core_temperature",
     "fs.feed_recycle_split.recycle_ratio": "fuel_recycle_ratio",
     "fs.sweep_recycle_split.recycle_ratio": "sweep_recycle_ratio",
-    # "fs.sweep_recycle_split.mixed_state[0].mole_frac_comp['O2']": "oxygen_out",
-    # "fs.feed_recycle_mix.mixed_state[0].mole_frac_comp['H2']": "hydrogen_in",
+    "fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]": "oxygen_out",
+    "fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]": "hydrogen_in",
     "fs.condenser_split.recycle_ratio": "vgr_recycle_ratio",
-    "fs.condenser_flash.heat_duty": "condenser_heat_duty",
-    # "fs.condenser_hx._flow_mol_cold_side_inlet_ref": "cooling_water_feed",
-    "fs.condenser_hx._temperature_hot_side_outlet_ref": "condenser_hot_outlet_temperature",
+    # "fs.condenser_flash.heat_duty": "condenser_heat_duty",
+    "fs.condenser_flash.vap_outlet.temperature": "condenser_hot_outlet_temperature",
     "fs.makeup_mix.makeup_mole_frac_comp_H2": "makeup_mole_frac_comp_H2",
     "fs.makeup_mix.makeup_mole_frac_comp_H2O": "makeup_mole_frac_comp_H2O",
 }
@@ -1383,6 +1381,7 @@ def run_simulation(time_set=nmpc_params["time_set_PI"],
         plt.title("PEN Temperature Gradient", fontsize=16)
 
         plt.show()
+        
         results = None
         
     return m, results
