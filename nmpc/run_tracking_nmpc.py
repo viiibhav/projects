@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 import cloudpickle as pickle
 from plotting import make_plots
 from nmpc_helper import (
-    make_tracking_objective_with_MVs,
+    make_tracking_objective,
     apply_custom_variable_scaling,
     apply_custom_constraint_scaling,
     initialize_model_with_petsc,
@@ -109,10 +109,77 @@ if __name__ == "__main__":
             include_interconnect=True,
         )
         
-        # rectify_initialization(m)        
-        # m.fs.deactivate_shortcut()
-        iscale.calculate_scaling_factors(m)
+        m.fs.p = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.n = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.q = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.r = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.p1 = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.n1 = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.n2 = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
+        m.fs.n3 = pyo.Var(m.fs.time,
+                          initialize=0,
+                          domain=pyo.NonNegativeReals)
 
+        if not plant:
+            # dTdz_electrode_lim = 675
+            
+            @m.fs.Constraint(m.fs.time)
+            def makeup_mole_frac_eqn1(b, t):
+                return b.makeup_mix.makeup_mole_frac_comp_H2[t] == 1e-14 + b.p[t]
+            
+            @m.fs.Constraint(m.fs.time)
+            def makeup_mole_frac_eqn2(b, t):
+                return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == \
+                    0.999 - 1e-14 - b.n[t]
+            
+            @m.fs.Constraint(m.fs.time)
+            def vgr_ratio_eqn(b, t):
+                return b.condenser_split.recycle_ratio[t] == 1e-4 + b.q[t]
+            
+            @m.fs.Constraint(m.fs.time)
+            def makeup_mole_frac_sum_eqn(b, t):
+                return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
+                    b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - b.p[t]
+            
+            @m.fs.Constraint(m.fs.time)
+            def condenser_outlet_temp_eqn(b, t):
+                return b.condenser_flash.control_volume.properties_out[t] \
+                    .temperature == 273.15 + 50 + b.p1[t] - b.n1[t]
+    
+            @m.fs.Constraint(m.fs.time)
+            def feed_recycle_ratio_eqn(b, t):
+                return b.feed_recycle_split.recycle_ratio[t] == 0.999 - b.n2[t]
+            
+            @m.fs.Constraint(m.fs.time)
+            def sweep_recycle_ratio_eqn(b, t):
+                return b.sweep_recycle_split.recycle_ratio[t] == 0.999 - b.n3[t]
+    
+            # @soec.fuel_electrode.Constraint(
+                # m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
+            # def dTdz_electrode_UB_rule(b, t, ix, iz):
+            #     return b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.p[t, ix, iz]
+            
+            # @soec.fuel_electrode.Constraint(
+            #     m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
+            # def dTdz_electrode_LB_rule(b, t, ix, iz):
+            #     return -b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.n[t, ix, iz]
+            
+        iscale.calculate_scaling_factors(m)
+        
         pyo.TransformationFactory("dae.finite_difference").apply_to(
             m.fs, nfe=nfe, wrt=m.fs.time, scheme="BACKWARD"
         )
@@ -122,8 +189,6 @@ if __name__ == "__main__":
                      fname="../../max_production.json.gz",
                      wts=ms.StoreSpec.value())
         
-        # import pdb; pdb.set_trace()
-
         # Copy initial conditions to rest of model for initialization
         if not plant:
             regular_vars, time_vars = flatten_dae_components(m, m.fs.time, pyo.Var)
@@ -139,7 +204,7 @@ if __name__ == "__main__":
         m.fs.fix_initial_conditions()
         
         # Fix DOF issue
-        m.fs.condenser_hx.hot_side.properties[:, 1].temperature.fix()
+        # m.fs.condenser_hx.hot_side.properties[:, 1].temperature.fix()
         
         manipulated_variables = get_manipulated_variables(m)        
         # import pdb; pdb.set_trace()
@@ -171,7 +236,7 @@ if __name__ == "__main__":
         plant=False,
     )
     controller.name = "Controller"
-    make_tracking_objective_with_MVs(controller, iter=0)
+    make_tracking_objective(controller, iter=0)
     
     # Apply scaling and initialize model
     apply_custom_variable_scaling(controller)
@@ -433,7 +498,7 @@ if __name__ == "__main__":
         controller.fs.fix_initial_conditions()
 
         print(f'\nSolving {controller.name}...\n')
-        make_tracking_objective_with_MVs(controller, iter)
+        make_tracking_objective(controller, iter)
         # add_penalty_formulation(controller)
         # controller.solutions.load_from(results)
         
