@@ -643,12 +643,32 @@ def save_controls(m, controls_dict):
 CVs_dict = {c.name: [] for c in get_CVs(plant)}
 CVs_dict.update({'fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]': []})
 CVs_dict.update({'fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]': []})
+other_states = [
+    "fs.soc_module.fuel_inlet.flow_mol",
+    "fs.soc_module.oxygen_inlet.flow_mol",
+    "fs.soc_module.solid_oxide_cell.fuel_inlet.mole_frac_comp",  # H2O
+    "fs.soc_module.solid_oxide_cell.fuel_channel.mole_frac_comp",  # H2O
+    "fs.soc_module.solid_oxide_cell.oxygen_inlet.mole_frac_comp",  # O2
+    "fs.soc_module.solid_oxide_cell.oxygen_channel.mole_frac_comp",  # O2
+    "fs.condenser_split.inlet.mole_frac_comp",  # H2
+    "fs.feed_medium_exchanger.tube_inlet.flow_mol",
+    "fs.total_electric_power",
+    "fs.soc_module.solid_oxide_cell.fuel_channel.temperature_inlet",
+    "fs.soc_module.solid_oxide_cell.oxygen_channel.temperature_inlet",
+    "fs.soc_module.solid_oxide_cell.soec.temperature_z",  # mean over iznodes
+    "fs.condenser_split.inlet.mole_frac_comp",
+]
+for i in other_states:
+    CVs_dict.update({i: []})
+
+
 def save_CVs(m, CVs_dict):
     for c in get_CVs(m):
         CVs_dict[c.name].append(c[m.fs.time.last()].value)
     CVs_dict['fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]'].append(m.fs.sweep_recycle_split.mixed_state[m.fs.time.last()].mole_frac_comp['O2'].value)
     CVs_dict['fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]'].append(m.fs.feed_recycle_mix.mixed_state[m.fs.time.last()].mole_frac_comp['H2'].value)
     return None
+
 
 # slack = []
 # slack = {}
