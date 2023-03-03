@@ -28,13 +28,14 @@ from pyomo.dae import ContinuousSet, DerivativeVar
 from soec_dynamic_flowsheet_mk2 import SoecStandaloneFlowsheet
 import matplotlib.pyplot as plt
 import cloudpickle as pickle
-from plotting import make_plots
 from nmpc_helper import (
     make_tracking_objective,
     apply_custom_variable_scaling,
     apply_custom_constraint_scaling,
     initialize_model_with_petsc,
     get_time_coordinates,
+    get_h2_production_target,
+    get_tracking_targets,
     get_tracking_variables,
     get_manipulated_variables,
     check_scaling,
@@ -44,6 +45,7 @@ from nmpc_helper import (
     get_large_duals,
     get_large_residuals,
     add_penalty_formulation,
+    alias_dict,
 )
 
 
@@ -112,39 +114,39 @@ if __name__ == "__main__":
         m.fs.p = pyo.Var(m.fs.time,
                           initialize=0,
                           domain=pyo.NonNegativeReals)
-        m.fs.n = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
+        # m.fs.n = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
         m.fs.q = pyo.Var(m.fs.time,
                           initialize=0,
                           domain=pyo.NonNegativeReals)
-        m.fs.r = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
-        m.fs.p1 = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
-        m.fs.n1 = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
-        m.fs.n2 = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
-        m.fs.n3 = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
+        # m.fs.r = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
+        # m.fs.p1 = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
+        # m.fs.n1 = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
+        # m.fs.n2 = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
+        # m.fs.n3 = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
 
         if not plant:
             # dTdz_electrode_lim = 675
             
-            @m.fs.Constraint(m.fs.time)
-            def makeup_mole_frac_eqn1(b, t):
-                return b.makeup_mix.makeup_mole_frac_comp_H2[t] == 1e-14 + b.p[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def makeup_mole_frac_eqn1(b, t):
+            #     return b.makeup_mix.makeup_mole_frac_comp_H2[t] == 1e-14 + b.p[t]
             
-            @m.fs.Constraint(m.fs.time)
-            def makeup_mole_frac_eqn2(b, t):
-                return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == \
-                    0.999 - 1e-14 - b.n[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def makeup_mole_frac_eqn2(b, t):
+            #     return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == \
+            #         0.999 - 1e-14 - b.n[t]
             
             @m.fs.Constraint(m.fs.time)
             def vgr_ratio_eqn(b, t):
@@ -155,31 +157,31 @@ if __name__ == "__main__":
                 return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
                     b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - b.p[t]
             
-            @m.fs.Constraint(m.fs.time)
-            def condenser_outlet_temp_eqn(b, t):
-                return b.condenser_flash.control_volume.properties_out[t] \
-                    .temperature == 273.15 + 50 + b.p1[t] - b.n1[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def condenser_outlet_temp_eqn(b, t):
+            #     return b.condenser_flash.control_volume.properties_out[t] \
+            #         .temperature == 273.15 + 50 + b.p1[t] - b.n1[t]
     
-            @m.fs.Constraint(m.fs.time)
-            def feed_recycle_ratio_eqn(b, t):
-                return b.feed_recycle_split.recycle_ratio[t] == 0.999 - b.n2[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def feed_recycle_ratio_eqn(b, t):
+            #     return b.feed_recycle_split.recycle_ratio[t] == 0.999 - b.n2[t]
             
-            @m.fs.Constraint(m.fs.time)
-            def sweep_recycle_ratio_eqn(b, t):
-                return b.sweep_recycle_split.recycle_ratio[t] == 0.999 - b.n3[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def sweep_recycle_ratio_eqn(b, t):
+            #     return b.sweep_recycle_split.recycle_ratio[t] == 0.999 - b.n3[t]
     
-            # @soec.fuel_electrode.Constraint(
-                # m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
-            # def dTdz_electrode_UB_rule(b, t, ix, iz):
-            #     return b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.p[t, ix, iz]
+            # # @soec.fuel_electrode.Constraint(
+            #     # m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
+            # # def dTdz_electrode_UB_rule(b, t, ix, iz):
+            # #     return b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.p[t, ix, iz]
             
-            # @soec.fuel_electrode.Constraint(
-            #     m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
-            # def dTdz_electrode_LB_rule(b, t, ix, iz):
-            #     return -b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.n[t, ix, iz]
-            
+            # # @soec.fuel_electrode.Constraint(
+            # #     m.fs.time, soec.fuel_electrode.ixnodes, soec.fuel_electrode.iznodes)
+            # # def dTdz_electrode_LB_rule(b, t, ix, iz):
+            # #     return -b.dtemperature_dz[t, ix, iz] - dTdz_electrode_lim <= b.n[t, ix, iz]
+
         iscale.calculate_scaling_factors(m)
-        
+
         pyo.TransformationFactory("dae.finite_difference").apply_to(
             m.fs, nfe=nfe, wrt=m.fs.time, scheme="BACKWARD"
         )
@@ -188,7 +190,7 @@ if __name__ == "__main__":
         ms.from_json(m,
                      fname="../../max_production.json.gz",
                      wts=ms.StoreSpec.value())
-        
+
         # Copy initial conditions to rest of model for initialization
         if not plant:
             regular_vars, time_vars = flatten_dae_components(m, m.fs.time, pyo.Var)
@@ -202,10 +204,10 @@ if __name__ == "__main__":
 
         # Fix initial conditions
         m.fs.fix_initial_conditions()
-        
+
         # Fix DOF issue
         # m.fs.condenser_hx.hot_side.properties[:, 1].temperature.fix()
-        
+
         manipulated_variables = get_manipulated_variables(m)        
         # import pdb; pdb.set_trace()
         for v in manipulated_variables:
@@ -226,8 +228,8 @@ if __name__ == "__main__":
     plant = create_model(time_set=[0, nmpc_params['step']], nfe=1, plant=True)
     plant.name = "Plant"
     # Apply scaling and initialize model
-    apply_custom_variable_scaling(plant)
-    apply_custom_constraint_scaling(plant)
+    # apply_custom_variable_scaling(plant)
+    # apply_custom_constraint_scaling(plant)
 
     print("Building controller model...")
     controller = create_model(
@@ -239,8 +241,8 @@ if __name__ == "__main__":
     make_tracking_objective(controller, iter=0)
     
     # Apply scaling and initialize model
-    apply_custom_variable_scaling(controller)
-    apply_custom_constraint_scaling(controller)
+    # apply_custom_variable_scaling(controller)
+    # apply_custom_constraint_scaling(controller)
     ms.from_json(controller,
                  fname="../../max_production.json.gz",
                  wts=ms.StoreSpec.value())
@@ -428,6 +430,27 @@ if __name__ == "__main__":
         ]
             
         return extra_dofs
+    
+    
+    def make_plots(savefig=False):
+        tracking_targets = get_tracking_targets(plant)
+        for varname, values in controls_dict.items():
+            alias = alias_dict[varname]
+            target = np.array(list(tracking_targets[alias].values()))
+            plt.figure()
+            plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, values)
+            plt.plot(nmpc_params['time_set_output'] / 3600, target, 'r--')
+            plt.title(varname)
+            plt.xlabel('time [hrs]')
+
+        h2_target = np.array(list(get_h2_production_target(plant).values()))
+        plt.figure()
+        plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, h2_production_rate)
+        plt.plot(nmpc_params['time_set_output'] / 3600, h2_target, 'r--')
+        plt.title('h2_production_rate')
+        plt.xlabel('time [hrs]')
+        
+        return None
 
 
     iscale.scale_time_discretization_equations(
@@ -524,8 +547,8 @@ if __name__ == "__main__":
         assert degrees_of_freedom(plant) == 0
 
         print(f'\nSolving {plant.name}...\n')
-        # solver.solve(plant, tee=True, load_solutions=True)
-        res = initialize_model_with_petsc(plant)
+        solver.solve(plant, tee=True, load_solutions=True)
+        # res = initialize_model_with_petsc(plant)
 
         save_states(states_dict)
         save_h2_production_rate()
