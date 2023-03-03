@@ -52,7 +52,7 @@ def get_time_coordinates():
                    t_start + 2 * t_ramp + t_settle + t_end]
 
     step = 150.0
-    nsteps_horizon = 6
+    nsteps_horizon = 5
     horizon = nsteps_horizon * step
     ntfe = int(horizon / step)
     time_set_controller = np.linspace(0, horizon, num=ntfe+1)
@@ -105,7 +105,8 @@ alias_dict = {
     "fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]": "hydrogen_in",
     "fs.condenser_split.recycle_ratio": "vgr_recycle_ratio",
     # "fs.condenser_flash.heat_duty": "condenser_heat_duty",
-    "fs.condenser_flash.vap_outlet.temperature": "condenser_hot_outlet_temperature",
+    # "fs.condenser_flash.vap_outlet.temperature": "condenser_hot_outlet_temperature",
+    "fs.condenser_flash.split._Vap_temperature_ref": "condenser_hot_outlet_temperature",
     "fs.makeup_mix.makeup_mole_frac_comp_H2": "makeup_mole_frac_comp_H2",
     "fs.makeup_mix.makeup_mole_frac_comp_H2O": "makeup_mole_frac_comp_H2O",
 }
@@ -145,8 +146,8 @@ def get_manipulated_variables(m):
         m.fs.makeup_mix._flow_mol_makeup_ref,
         m.fs.sweep_blower._flow_mol_inlet_ref,
         m.fs.condenser_split.recycle_ratio,
-        # m.fs.condenser_hx._flow_mol_cold_side_inlet_ref,
-        m.fs.condenser_flash.heat_duty,
+        # m.fs.condenser_flash.heat_duty,
+        m.fs.condenser_flash.vap_outlet.temperature,
         m.fs.feed_heater.electric_heat_duty,
         m.fs.sweep_heater.electric_heat_duty,
         m.fs.feed_recycle_split.recycle_ratio,
@@ -303,17 +304,17 @@ def make_tracking_objective(m, iter):
 
         # Penalties on manipulated variable deviations
         mv_multiplier = 1e-03
-        expr += mv_multiplier * 1e-03 * sum(
+        expr += mv_multiplier * 1e-06 * sum(
             (m.fs.makeup_mix.makeup.flow_mol[t]
              - makeup_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-03 * sum(
+        expr += mv_multiplier * 1e-06 * sum(
             (m.fs.sweep_blower.inlet.flow_mol[t]
              - sweep_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e+00 * sum(
+        expr += mv_multiplier * 1e+01 * sum(
             (m.fs.soc_module.potential_cell[t]
              - potential[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
@@ -343,7 +344,7 @@ def make_tracking_objective(m, iter):
              - vgr_recycle_ratio[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-03 * sum(
+        expr += mv_multiplier * 1e-06 * sum(
             (m.fs.condenser_flash.vap_outlet.temperature[t]
              - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
@@ -417,13 +418,13 @@ def make_tracking_objective(m, iter):
         )
 
         # l1-penalties
-        m.fs.condenser_outlet_temp_eqn.activate()
-        expr += 1e+03 * sum(m.fs.p1[t] + m.fs.n1[t] for t in m.fs.time)
+        # m.fs.condenser_outlet_temp_eqn.activate()
+        # expr += 1e+03 * sum(m.fs.p1[t] + m.fs.n1[t] for t in m.fs.time)
 
-        m.fs.feed_recycle_ratio_eqn.activate()
-        expr += 1e+03 * sum(m.fs.n2[t] for t in m.fs.time)
-        m.fs.sweep_recycle_ratio_eqn.activate()
-        expr += 1e+03 * sum(m.fs.n3[t] for t in m.fs.time)
+        # m.fs.feed_recycle_ratio_eqn.activate()
+        # expr += 1e+03 * sum(m.fs.n2[t] for t in m.fs.time)
+        # m.fs.sweep_recycle_ratio_eqn.activate()
+        # expr += 1e+03 * sum(m.fs.n3[t] for t in m.fs.time)
 
         t_pre_ramp_iteration = nmpc_params['t_start'] / nmpc_params['step'] + 1
         t_post_ramp_iteration = (
@@ -433,19 +434,19 @@ def make_tracking_objective(m, iter):
             nmpc_params['t_ramp']
         ) + 1
         if (iter <= t_pre_ramp_iteration) or (iter >= t_post_ramp_iteration):
-            m.fs.makeup_mole_frac_eqn1.activate()
-            m.fs.makeup_mole_frac_eqn2.activate()
+            # m.fs.makeup_mole_frac_eqn1.activate()
+            # m.fs.makeup_mole_frac_eqn2.activate()
             m.fs.vgr_ratio_eqn.activate()
             m.fs.makeup_mole_frac_sum_eqn.deactivate()
             expr += 1e+03 * sum(m.fs.p[t]
                                 for t in m.fs.time)
-            expr += 1e+03 * sum(m.fs.n[t]
-                                for t in m.fs.time)
+            # expr += 1e+03 * sum(m.fs.n[t]
+            #                     for t in m.fs.time)
             expr += 1e+03 * sum(m.fs.q[t]
                                 for t in m.fs.time)
         else:
-            m.fs.makeup_mole_frac_eqn1.deactivate()
-            m.fs.makeup_mole_frac_eqn2.deactivate()
+            # m.fs.makeup_mole_frac_eqn1.deactivate()
+            # m.fs.makeup_mole_frac_eqn2.deactivate()
             m.fs.vgr_ratio_eqn.deactivate()
             m.fs.makeup_mole_frac_sum_eqn.activate()
             expr += 1e+03 * sum(m.fs.p[t]
