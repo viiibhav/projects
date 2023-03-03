@@ -442,42 +442,42 @@ def create_obj_expr(m):
     
     # Penalties on manipulated variable deviations
     mv_multiplier = 1e-03
-    expr += mv_multiplier * 1e-03 * sum(
-        (m.fs.makeup_mix.makeup.flow_mol[t]
-          - makeup_feed_rate[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e-03 * sum(
-        (m.fs.sweep_blower.inlet.flow_mol[t]
-          - sweep_feed_rate[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e-06 * sum(
+    #     (m.fs.makeup_mix.makeup.flow_mol[t]
+    #       - makeup_feed_rate[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e-06 * sum(
+    #     (m.fs.sweep_blower.inlet.flow_mol[t]
+    #       - sweep_feed_rate[t_base + t])**2 for t in m.fs.time)
     expr += mv_multiplier * 1e+00 * sum(
         (m.fs.soc_module.potential_cell[t]
           - potential[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e+01 * sum(
-        (m.fs.feed_recycle_split.recycle_ratio[t]
-          - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e+01 * sum(
-        (m.fs.sweep_recycle_split.recycle_ratio[t]
-          - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e-06 * sum(
-        (m.fs.feed_heater.electric_heat_duty[t]
-          - feed_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-5
-    expr += mv_multiplier * 1e-07 * sum(
-        (m.fs.sweep_heater.electric_heat_duty[t]
-          - sweep_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-6
-    expr += mv_multiplier * 1e+01 * sum(
-        (m.fs.condenser_split.recycle_ratio[t]
-          - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e+01 * sum(
+    #     (m.fs.feed_recycle_split.recycle_ratio[t]
+    #       - fuel_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e+01 * sum(
+    #     (m.fs.sweep_recycle_split.recycle_ratio[t]
+    #       - sweep_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e-06 * sum(
+    #     (m.fs.feed_heater.electric_heat_duty[t]
+    #       - feed_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-5
     # expr += mv_multiplier * 1e-07 * sum(
-    #     (m.fs.condenser_flash.heat_duty[t]
-    #       - condenser_heat_duty[t_base + t])**2 for t in m.fs.time) * 1e-7
-    expr += mv_multiplier * 1e-03 * sum(
-        (m.fs.condenser_flash.vap_outlet.temperature[t]
-          - condenser_hot_outlet_temperature[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e+01 * sum(
-        (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
-          - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
-    expr += mv_multiplier * 1e+00 * sum(
-        (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
-          - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time)
+    #     (m.fs.sweep_heater.electric_heat_duty[t]
+    #       - sweep_heater_duty[t_base + t])**2 for t in m.fs.time) * 1e-6
+    # expr += mv_multiplier * 1e+01 * sum(
+    #     (m.fs.condenser_split.recycle_ratio[t]
+    #       - vgr_recycle_ratio[t_base + t])**2 for t in m.fs.time)
+    # # expr += mv_multiplier * 1e-07 * sum(
+    # #     (m.fs.condenser_flash.heat_duty[t]
+    # #       - condenser_heat_duty[t_base + t])**2 for t in m.fs.time) * 1e-7
+    # expr += mv_multiplier * 1e-06 * sum(
+    #     (m.fs.condenser_flash.vap_outlet.temperature[t]
+    #       - condenser_hot_outlet_temperature[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e+01 * sum(
+    #     (m.fs.makeup_mix.makeup_mole_frac_comp_H2[t]
+    #       - makeup_mole_frac_comp_H2[t_base + t])**2 for t in m.fs.time)
+    # expr += mv_multiplier * 1e+00 * sum(
+    #     (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
+    #       - makeup_mole_frac_comp_H2O[t_base + t])**2 for t in m.fs.time)
     
     expr += mv_multiplier * 1e-12 * sum((m.fs.feed_heater.electric_heat_duty[t] -
                               m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
@@ -643,30 +643,46 @@ def save_controls(m, controls_dict):
 CVs_dict = {c.name: [] for c in get_CVs(plant)}
 CVs_dict.update({'fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]': []})
 CVs_dict.update({'fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]': []})
-other_states = [
-    "fs.soc_module.fuel_inlet.flow_mol",
-    "fs.soc_module.oxygen_inlet.flow_mol",
-    "fs.soc_module.solid_oxide_cell.fuel_inlet.mole_frac_comp",  # H2O
-    "fs.soc_module.solid_oxide_cell.fuel_channel.mole_frac_comp",  # H2O
-    "fs.soc_module.solid_oxide_cell.oxygen_inlet.mole_frac_comp",  # O2
-    "fs.soc_module.solid_oxide_cell.oxygen_channel.mole_frac_comp",  # O2
-    "fs.condenser_split.inlet.mole_frac_comp",  # H2
-    "fs.feed_medium_exchanger.tube_inlet.flow_mol",
-    "fs.total_electric_power",
-    "fs.soc_module.solid_oxide_cell.fuel_channel.temperature_inlet",
-    "fs.soc_module.solid_oxide_cell.oxygen_channel.temperature_inlet",
-    "fs.soc_module.solid_oxide_cell.soec.temperature_z",  # mean over iznodes
-    "fs.condenser_split.inlet.mole_frac_comp",
-]
-for i in other_states:
-    CVs_dict.update({i: []})
+
+def get_output_dict(m):
+    tf = m.fs.time.last()
+    soec = m.fs.soc_module.solid_oxide_cell
+    out_dict = {
+        "soec_fuel_inlet_flow": m.fs.soc_module.fuel_inlet.flow_mol[tf],
+        "soec_oxygen_inlet_flow": m.fs.soc_module.oxygen_inlet.flow_mol[tf],
+        "fuel_inlet_H2O": soec.fuel_inlet.mole_frac_comp[tf, "H2O"],
+        "fuel_outlet_H2O": soec.fuel_channel.mole_frac_comp[tf, soec.iznodes.last(), "H2O"],
+        "sweep_inlet_O2": soec.oxygen_inlet.mole_frac_comp[tf, "O2"],
+        "sweep_outlet_O2": soec.oxygen_channel.mole_frac_comp[tf, soec.iznodes.first(), "O2"],
+        "product_mole_frac_H2": m.fs.condenser_split.inlet.mole_frac_comp[tf, "H2"],
+        "steam_feed_rate": m.fs.feed_medium_exchanger.tube_inlet.flow_mol[tf],
+        "total_electric_power": m.fs.total_electric_power[tf],
+        "fuel_inlet_temperature": soec.fuel_channel.temperature_inlet[tf],
+        "sweep_inlet_temperature": soec.oxygen_channel.temperature_inlet[tf],
+        "cell_average_temperature": [soec.temperature_z[tf, iz] for iz in soec.iznodes],  # mean over iznodes
+    }
+    return out_dict
+
+for alias, var in get_output_dict(plant).items():
+    CVs_dict.update({alias: []})
 
 
 def save_CVs(m, CVs_dict):
     for c in get_CVs(m):
-        CVs_dict[c.name].append(c[m.fs.time.last()].value)
-    CVs_dict['fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]'].append(m.fs.sweep_recycle_split.mixed_state[m.fs.time.last()].mole_frac_comp['O2'].value)
-    CVs_dict['fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]'].append(m.fs.feed_recycle_mix.mixed_state[m.fs.time.last()].mole_frac_comp['H2'].value)
+        CVs_dict[c.name].append(value(c[m.fs.time.last()]))
+
+    CVs_dict['fs.sweep_recycle_split.mixed_state.mole_frac_comp[O2]'].append(
+        m.fs.sweep_recycle_split.mixed_state[m.fs.time.last()].mole_frac_comp['O2'].value)
+    CVs_dict['fs.feed_recycle_mix.mixed_state.mole_frac_comp[H2]'].append(
+        m.fs.feed_recycle_mix.mixed_state[m.fs.time.last()].mole_frac_comp['H2'].value)
+    
+    for alias, var in get_output_dict(m).items():
+        if alias == "cell_average_temperature":
+            v = np.mean([value(var_) for var_ in var])
+        else:
+            v = value(var)
+        CVs_dict[alias].append(v)
+    
     return None
 
 
