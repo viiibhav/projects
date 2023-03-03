@@ -68,7 +68,7 @@ def plot_results(filename, nmpc_filepath, include_PI):
     potential = controls_dict[key]
     ax.plot(
         time_nmpc[:len(potential)],
-        potential,
+        potential[:len(time_nmpc)],
         color="red",
         label="NMPC"
     )
@@ -130,13 +130,13 @@ def plot_results(filename, nmpc_filepath, include_PI):
     sweep_heater_duty = controls_dict[key_sweep]
     ax.plot(
         time_nmpc[:len(feed_heater_duty)],
-        1e-06 * np.array(feed_heater_duty),
+        1e-06 * np.array(feed_heater_duty[:len(time_nmpc)]),
         color="firebrick",
         label="Fuel NMPC",
     )
     ax.plot(
         time_nmpc[:len(sweep_heater_duty)],
-        1e-06 * np.array(sweep_heater_duty),
+        1e-06 * np.array(sweep_heater_duty[:len(time_nmpc)]),
         color="darkorange",
         label="Sweep NMPC",
     )
@@ -174,13 +174,13 @@ def plot_results(filename, nmpc_filepath, include_PI):
     sweep_heater_duty = controls_dict[key_sweep]
     ax.plot(
         time_nmpc[:len(feed_heater_duty)],
-        1e-06 * np.array(feed_heater_duty),
+        1e-06 * np.array(feed_heater_duty[:len(time_nmpc)]),
         color="firebrick",
         label="Fuel NMPC",
     )
     ax.plot(
         time_nmpc[:len(sweep_heater_duty)],
-        1e-06 * np.array(sweep_heater_duty),
+        1e-06 * np.array(sweep_heater_duty[:len(time_nmpc)]),
         color="darkorange",
         label="Sweep NMPC",
     )
@@ -218,7 +218,7 @@ def plot_results(filename, nmpc_filepath, include_PI):
     
     ax.plot(
         time_nmpc[:len(h2_production_rate)],
-        np.array(h2_production_rate),
+        np.array(h2_production_rate[:len(time_nmpc)]),
         color="red",
         label="NMPC",
     )
@@ -334,13 +334,13 @@ def plot_results(filename, nmpc_filepath, include_PI):
     sweep_outlet_temperature = CVs_dict[key_sweep]
     ax.plot(
         time_nmpc[:len(fuel_outlet_temperature)],
-        np.array(fuel_outlet_temperature),
+        np.array(fuel_outlet_temperature[:len(time_nmpc)]),
         color="firebrick",
         label="Fuel NMPC",
     )
     ax.plot(
         time_nmpc[:len(sweep_outlet_temperature)],
-        np.array(sweep_outlet_temperature),
+        np.array(sweep_outlet_temperature[:len(time_nmpc)]),
         color="darkorange",
         label="Sweep NMPC",
     )
