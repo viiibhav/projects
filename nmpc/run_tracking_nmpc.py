@@ -156,7 +156,7 @@ if __name__ == "__main__":
             @m.fs.Constraint(m.fs.time)
             def makeup_mole_frac_sum_eqn(b, t):
                 return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
-                    b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.999 - b.p[t]
+                    b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.9999 - b.p[t]
             
             # @m.fs.Constraint(m.fs.time)
             # def condenser_outlet_temp_eqn(b, t):
@@ -546,7 +546,8 @@ if __name__ == "__main__":
         var_dict = controlled_vars_dict
         
         # trim heater tempeatures
-        aliases = ["feed_heater_outlet_temperature", "sweep_heater_outlet_temperature"]
+        aliases = ["feed_heater_outlet_temperature",
+                   "sweep_heater_outlet_temperature"]
         make_subplots(var_dict, aliases)
 
         aliases = ["fuel_outlet_temperature",
@@ -575,9 +576,13 @@ if __name__ == "__main__":
     res = initialize_model_with_petsc(plant)
     solver.solve(plant, tee=True)
     save_states(states_dict)
-    # raise Exception()
-
-    idaes.cfg.ipopt.options.tol = 1e-05  # default = 1e-08
+    
+    # save initial controls
+    for mv, alias in get_manipulated_variables(plant).items():
+        controls_dict[alias].append(value(mv[plant.fs.time.last()]))
+    
+    
+    idaes.cfg.ipopt.options.tol = 1e-04  # default = 1e-08
     idaes.cfg.ipopt.options.acceptable_tol = 1e-04  # default = 1e-06
     idaes.cfg.ipopt.options.constr_viol_tol = 1e-04  # default = 1e-04
     idaes.cfg.ipopt.options.dual_inf_tol = 1e+01  # default = 1e+00 (unscaled)
