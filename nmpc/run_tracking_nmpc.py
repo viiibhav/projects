@@ -38,6 +38,7 @@ from nmpc_helper import (
     get_tracking_targets,
     get_tracking_variables,
     get_manipulated_variables,
+    get_controlled_variables,
     check_scaling,
     hunt_degeneracy,
     shift_dae_vars_by_dt,
@@ -85,13 +86,13 @@ if __name__ == "__main__":
 
     def fix_manipulated_variables(m):
         manipulated_variables = get_manipulated_variables(m)
-        for var in manipulated_variables:
+        for var, alias in manipulated_variables.items():
             var[:].fix()
 
 
     def unfix_manipulated_variables(m):
         manipulated_variables = get_manipulated_variables(m)
-        for var in manipulated_variables:
+        for var, alias in manipulated_variables.items():
             var[:].unfix()
 
 
@@ -210,7 +211,7 @@ if __name__ == "__main__":
 
         manipulated_variables = get_manipulated_variables(m)        
         # import pdb; pdb.set_trace()
-        for v in manipulated_variables:
+        for v, _ in manipulated_variables.items():
             if plant:
                 v[:].fix(v[0].value)
             else:
@@ -299,8 +300,8 @@ if __name__ == "__main__":
 
 
     def apply_control_actions():
-        controller_MVs = get_manipulated_variables(controller)
-        plant_MVs = get_manipulated_variables(plant)
+        controller_MVs = get_manipulated_variables(controller).keys()
+        plant_MVs = get_manipulated_variables(plant).keys()
         # controller_MVs = controller.fs.manipulated_variables
         # plant_MVs = plant.fs.manipulated_variables
 
@@ -340,27 +341,32 @@ if __name__ == "__main__":
         return None
 
 
-    controls_dict = {c.name: [] for c in get_manipulated_variables(controller)}
+    controls_dict = {
+        alias: [] for c, alias in get_manipulated_variables(controller).items()
+    }
     # controls_dict = {c.name: [] for c in controller.fs.manipulated_variables}
     def save_controls(controls_dict):
         t0 = controller.fs.time.first()
         t1 = controller.fs.time.next(t0)  # controller.fs.time.at(2)
-        for c in get_manipulated_variables(controller):
+        for c, alias in get_manipulated_variables(controller).items():
         # for c in controller.fs.manipulated_variables:
-            controls_dict[c.name].append(value(c[t1]))
+            controls_dict[alias].append(value(c[t1]))
         return None
 
 
-    # controlled_vars_dict = {
-    #     c.name: [] for c in [controller.fs.feed_heater.outlet.temperature,
-    #                           controller.fs.sweep_heater.outlet.temperature]
-    # }
-    # def save_controlled_vars(controlled_vars_dict):
-    #     t0 = controller.fs.time.first()
-    #     for c in [controller.fs.feed_heater.outlet.temperature,
-    #               controller.fs.sweep_heater.outlet.temperature]:
-    #         controlled_vars_dict[c.name].append(value(c[t0]))
-    #     return None
+    controlled_vars_dict = {
+        alias: [] for alias in get_controlled_variables(plant).values()
+    }
+    def save_controlled_vars(controlled_vars_dict):
+        # t0 = plant.fs.time.first()
+        # tf = plant.fs.time.last()
+        for var, alias in get_controlled_variables(plant).items():
+            if alias == "cell_average_temperature":
+                val = np.mean([value(temp) for temp in var])
+                controlled_vars_dict[alias].append(val)
+            else:
+                controlled_vars_dict[alias].append(value(var))
+        return None
 
 
     h2_production_rate = []
@@ -434,22 +440,128 @@ if __name__ == "__main__":
     
     def make_plots(savefig=False):
         tracking_targets = get_tracking_targets(plant)
-        for varname, values in controls_dict.items():
-            alias = alias_dict[varname]
-            target = np.array(list(tracking_targets[alias].values()))
-            plt.figure()
-            plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, values)
-            plt.plot(nmpc_params['time_set_output'] / 3600, target, 'r--')
-            plt.title(varname)
-            plt.xlabel('time [hrs]')
-
-        h2_target = np.array(list(get_h2_production_target(plant).values()))
-        plt.figure()
-        plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, h2_production_rate)
-        plt.plot(nmpc_params['time_set_output'] / 3600, h2_target, 'r--')
-        plt.title('h2_production_rate')
-        plt.xlabel('time [hrs]')
         
+        def demarcate_ramps(ax):
+            ramp_list = nmpc_params['time_set_PI'][1:-1]
+            for tpoint in np.squeeze(ramp_list):
+                ax.plot(
+                    np.array([tpoint, tpoint]) / 60**2,
+                    [-1e+08, 1e+08],
+                    color="gray",
+                    linestyle='--',
+                )
+        
+        def make_subplots(var_dict, aliases):
+            nplots = len(aliases)
+            if nplots == 1:
+                subplots = (1, 1)
+            elif nplots == 2:
+                subplots = (2, 1)
+            elif nplots == 3:
+                subplots = (3, 1)
+
+            trajectories = [var_dict[alias] for alias in aliases]
+            fig, axs = plt.subplots(*subplots)
+            axs = np.array(axs).reshape(-1)
+            for ax, alias, values in zip(axs, aliases, trajectories):
+                ax.plot(
+                    time_set_nmpc[:len(h2_production_rate)] / 3600,
+                    values,
+                    color='blue',
+                    linewidth=2,
+                )
+                
+                try:
+                    target = np.array(list(tracking_targets[alias].values()))
+                    ax.plot(
+                        nmpc_params['time_set_output'] / 3600,
+                        target,
+                        'r--',
+                    )
+                except:
+                    pass
+                
+                demarcate_ramps(ax)
+                try:
+                    ymin = min(list(target) + list(values))
+                    ymax = max(list(target) + list(values))
+                except:
+                    ymin = min(values)
+                    ymax = max(values)
+                ylim = [
+                    ymin - 0.05 * (ymax - ymin),
+                    ymax + 0.05 * (ymax - ymin),
+                ]
+                ax.set_ylim(ylim)
+                ax.set_title(alias)
+                ax.set_xlabel('time [hrs]')
+            fig.tight_layout()
+            
+            return None
+        
+        # hydrogen production rate
+        h2_target = np.array(list(get_h2_production_target(plant).values()))
+        fig, ax = plt.subplots()
+        ax.plot(
+            time_set_nmpc[:len(h2_production_rate)] / 3600,
+            h2_production_rate,
+            color="blue",
+            linewidth=2,
+        )
+        ax.plot(nmpc_params['time_set_output'] / 3600, h2_target, 'r--')
+        demarcate_ramps(ax)
+        ax.set_ylim([-1.1, 2.1])
+        ax.set_title('h2_production_rate')
+        ax.set_xlabel('time [hrs]')
+        fig.tight_layout()
+        
+        # controls
+        var_dict = controls_dict
+        
+        # potential
+        aliases = ["potential"]
+        make_subplots(var_dict, aliases)
+        
+        # feed rates
+        aliases = ["makeup_feed_rate", "sweep_feed_rate"]
+        make_subplots(var_dict, aliases)
+        
+        # condenser
+        aliases = ["vgr_recycle_ratio", "condenser_hot_outlet_temperature"]
+        make_subplots(var_dict, aliases)
+        
+        # trim heater duties
+        aliases = ["feed_heater_duty", "sweep_heater_duty"]
+        make_subplots(var_dict, aliases)
+
+        # recycle ratios
+        aliases = ["fuel_recycle_ratio", "sweep_recycle_ratio"]
+        make_subplots(var_dict, aliases)
+
+        # makeup mole fractions
+        aliases = ["makeup_mole_frac_comp_H2", "makeup_mole_frac_comp_H2O"]
+        make_subplots(var_dict, aliases)
+
+        # controlled variables and other output variables
+        var_dict = controlled_vars_dict
+        
+        # trim heater tempeatures
+        aliases = ["feed_heater_outlet_temperature", "sweep_heater_outlet_temperature"]
+        make_subplots(var_dict, aliases)
+
+        aliases = ["fuel_outlet_temperature",
+                   "sweep_outlet_temperature",
+                   "stack_core_temperature"]
+        make_subplots(var_dict, aliases)
+ 
+        aliases = ["oxygen_out", "hydrogen_in"]
+        make_subplots(var_dict, aliases)
+               
+        aliases = ["fuel_inlet_temperature",
+                   "sweep_inlet_temperature",
+                   "cell_average_temperature"]
+        make_subplots(var_dict, aliases)
+
         return None
 
 
@@ -465,7 +577,7 @@ if __name__ == "__main__":
     save_states(states_dict)
     # raise Exception()
 
-    idaes.cfg.ipopt.options.tol = 1e-04  # default = 1e-08
+    idaes.cfg.ipopt.options.tol = 1e-05  # default = 1e-08
     idaes.cfg.ipopt.options.acceptable_tol = 1e-04  # default = 1e-06
     idaes.cfg.ipopt.options.constr_viol_tol = 1e-04  # default = 1e-04
     idaes.cfg.ipopt.options.dual_inf_tol = 1e+01  # default = 1e+00 (unscaled)
@@ -534,7 +646,6 @@ if __name__ == "__main__":
             
         objective.append(value(controller.obj))
         save_controls(controls_dict)
-        # save_controlled_vars(controlled_vars_dict)
 
         # update parameters between runs
         # controller.ipopt_zL_in.update(controller.ipopt_zL_out)
@@ -552,6 +663,7 @@ if __name__ == "__main__":
 
         save_states(states_dict)
         save_h2_production_rate()
+        save_controlled_vars(controlled_vars_dict)
 
         # break
 
