@@ -41,7 +41,7 @@ import matplotlib.pyplot as plt
 # =============================================================================
 def get_time_coordinates():
     t_start = 0.5 * 60 * 60
-    t_ramp = 0.5 * 60 * 60
+    t_ramp = 1.0 * 60 * 60
     t_settle = 2 * 60 * 60
     t_end = 1 * 60 * 60
     time_set_PI = [0,
@@ -229,7 +229,7 @@ def get_tracking_targets(m):
         index_col=0,
     )
 
-    def get_setpoint_trajectory(alias, reversible_mode=False):
+    def get_setpoint_trajectory(alias, reversible_mode=True):
         # alias = alias_dict[var.name]
         if reversible_mode:
             sp_hydrogen_hi = df[alias]["maximum_H2"]
@@ -329,12 +329,12 @@ def make_tracking_objective(m, iter):
 
         # Penalties on manipulated variable deviations
         mv_multiplier = 1e-03
-        expr += mv_multiplier * 1e-05 * sum(
+        expr += mv_multiplier * 1e-04 * sum(
             (m.fs.makeup_mix.makeup.flow_mol[t]
              - makeup_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-05 * sum(
+        expr += mv_multiplier * 1e-04 * sum(
             (m.fs.sweep_blower.inlet.flow_mol[t]
              - sweep_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
@@ -354,12 +354,12 @@ def make_tracking_objective(m, iter):
              - sweep_recycle_ratio[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-11 * sum(
+        expr += mv_multiplier * 1e-10 * sum(
             (m.fs.feed_heater.electric_heat_duty[t]
              - feed_heater_duty[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-13 * sum(
+        expr += mv_multiplier * 1e-11 * sum(
             (m.fs.sweep_heater.electric_heat_duty[t]
              - sweep_heater_duty[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
