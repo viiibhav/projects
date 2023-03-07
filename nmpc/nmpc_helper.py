@@ -91,6 +91,7 @@ alias_dict = {
     "fs.soc_module.potential_cell": "potential",
     "fs.soc_module.fuel_outlet_mole_frac_comp_H2": "soc_fuel_outlet_mole_frac_comp_H2",
     "fs.makeup_mix._flow_mol_makeup_ref": "makeup_feed_rate",
+    # "fs.feed_medium_exchanger._flow_mol_cold_side_inlet_ref" : "steam_feed_rate",
     "fs.sweep_blower._flow_mol_inlet_ref": "sweep_feed_rate",
     "fs.feed_heater.electric_heat_duty": "feed_heater_duty",
     "fs.feed_heater._temperature_outlet_ref": "feed_heater_outlet_temperature",
@@ -160,7 +161,7 @@ def get_controlled_variables(m):
     cmap = ComponentMap()
     soec = m.fs.soc_module.solid_oxide_cell
     tf = m.fs.time.last()
-    cmap[m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[tf]] = "fuel_outlet_mole_frac_comp_H2"
+    cmap[m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[tf]] = "soc_fuel_outlet_mole_frac_comp_H2"
     cmap[m.fs.feed_heater._temperature_outlet_ref[tf]] = "feed_heater_outlet_temperature"
     cmap[m.fs.soc_module._temperature_fuel_outlet_ref[tf]] = "fuel_outlet_temperature"
     cmap[m.fs.sweep_heater._temperature_outlet_ref[tf]] = "sweep_heater_outlet_temperature"
@@ -180,6 +181,7 @@ def get_controlled_variables(m):
     cmap[soec.fuel_channel.temperature_inlet[tf]] = "fuel_inlet_temperature"
     cmap[soec.oxygen_channel.temperature_inlet[tf]] = "sweep_inlet_temperature"
     cmap[soec.temperature_z[tf, :]] = "cell_average_temperature"  # take mean over iznodes
+    cmap[soec.fuel_electrode.dtemperature_dz[tf, 1, :]] = "temperature_gradient"
     return cmap
 
 
@@ -331,47 +333,47 @@ def make_tracking_objective(m, iter):
         mv_multiplier = 1e-03
         expr += mv_multiplier * 1e-04 * sum(
             (m.fs.makeup_mix.makeup.flow_mol[t]
-             - makeup_feed_rate[t])**2 for t in m.fs.time
+              - makeup_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e-04 * sum(
             (m.fs.sweep_blower.inlet.flow_mol[t]
-             - sweep_feed_rate[t])**2 for t in m.fs.time
+              - sweep_feed_rate[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e+01 * sum(
             (m.fs.soc_module.potential_cell[t]
-             - potential[t])**2 for t in m.fs.time
+              - potential[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e+01 * sum(
             (m.fs.feed_recycle_split.recycle_ratio[t]
-             - fuel_recycle_ratio[t])**2 for t in m.fs.time
+              - fuel_recycle_ratio[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e+01 * sum(
             (m.fs.sweep_recycle_split.recycle_ratio[t]
-             - sweep_recycle_ratio[t])**2 for t in m.fs.time
+              - sweep_recycle_ratio[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
-        expr += mv_multiplier * 1e-10 * sum(
-            (m.fs.feed_heater.electric_heat_duty[t]
-             - feed_heater_duty[t])**2 for t in m.fs.time
-            if t != m.fs.time.first()
-        )
-        expr += mv_multiplier * 1e-11 * sum(
-            (m.fs.sweep_heater.electric_heat_duty[t]
-             - sweep_heater_duty[t])**2 for t in m.fs.time
-            if t != m.fs.time.first()
-        )
+        # expr += mv_multiplier * 1e-10 * sum(
+        #     (m.fs.feed_heater.electric_heat_duty[t]
+        #       - feed_heater_duty[t])**2 for t in m.fs.time
+        #     if t != m.fs.time.first()
+        # )
+        # expr += mv_multiplier * 1e-11 * sum(
+        #     (m.fs.sweep_heater.electric_heat_duty[t]
+        #       - sweep_heater_duty[t])**2 for t in m.fs.time
+        #     if t != m.fs.time.first()
+        # )
         expr += mv_multiplier * 1e+01 * sum(
             (m.fs.condenser_split.recycle_ratio[t]
-             - vgr_recycle_ratio[t])**2 for t in m.fs.time
+              - vgr_recycle_ratio[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e-06 * sum(
             (m.fs.condenser_flash.vap_outlet.temperature[t]
-             - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
+              - condenser_hot_outlet_temperature[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
         expr += mv_multiplier * 1e+01 * sum(
@@ -381,7 +383,7 @@ def make_tracking_objective(m, iter):
         )
         expr += mv_multiplier * 1e+00 * sum(
             (m.fs.makeup_mix.makeup_mole_frac_comp_H2O[t]
-             - makeup_mole_frac_comp_H2O[t])**2 for t in m.fs.time
+              - makeup_mole_frac_comp_H2O[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
         )
 
@@ -451,31 +453,31 @@ def make_tracking_objective(m, iter):
         # m.fs.sweep_recycle_ratio_eqn.activate()
         # expr += 1e+01 * sum(m.fs.n3[t] for t in m.fs.time)
 
-        t_pre_ramp_iteration = nmpc_params['t_start'] / nmpc_params['step'] + 1
-        t_post_ramp_iteration = (
-            nmpc_params['t_start'] +
-            nmpc_params['t_ramp'] +
-            nmpc_params['t_settle'] +
-            nmpc_params['t_ramp']
-        ) + 1
-        if (iter <= t_pre_ramp_iteration) or (iter >= t_post_ramp_iteration):
-            # m.fs.makeup_mole_frac_eqn1.activate()
-            # m.fs.makeup_mole_frac_eqn2.activate()
-            m.fs.vgr_ratio_eqn.activate()
-            m.fs.makeup_mole_frac_sum_eqn.deactivate()
-            expr += 1e+01 * sum(m.fs.p[t]
-                                for t in m.fs.time)
-            # expr += 1e+01 * sum(m.fs.n[t]
-            #                     for t in m.fs.time)
-            expr += 1e+01 * sum(m.fs.q[t]
-                                for t in m.fs.time)
-        else:
-            # m.fs.makeup_mole_frac_eqn1.deactivate()
-            # m.fs.makeup_mole_frac_eqn2.deactivate()
-            m.fs.vgr_ratio_eqn.deactivate()
-            m.fs.makeup_mole_frac_sum_eqn.activate()
-            expr += 1e+01 * sum(m.fs.p[t]
-                                for t in m.fs.time)
+        # t_pre_ramp_iteration = nmpc_params['t_start'] / nmpc_params['step'] + 1
+        # t_post_ramp_iteration = (
+        #     nmpc_params['t_start'] +
+        #     nmpc_params['t_ramp'] +
+        #     nmpc_params['t_settle'] +
+        #     nmpc_params['t_ramp']
+        # ) + 1
+        # if (iter <= t_pre_ramp_iteration) or (iter >= t_post_ramp_iteration):
+        #     # m.fs.makeup_mole_frac_eqn1.activate()
+        #     # m.fs.makeup_mole_frac_eqn2.activate()
+        #     m.fs.vgr_ratio_eqn.activate()
+        #     m.fs.makeup_mole_frac_sum_eqn.deactivate()
+        #     expr += 1e+01 * sum(m.fs.p[t]
+        #                         for t in m.fs.time)
+        #     # expr += 1e+01 * sum(m.fs.n[t]
+        #     #                     for t in m.fs.time)
+        #     expr += 1e+01 * sum(m.fs.q[t]
+        #                         for t in m.fs.time)
+        # else:
+        #     # m.fs.makeup_mole_frac_eqn1.deactivate()
+        #     # m.fs.makeup_mole_frac_eqn2.deactivate()
+        #     m.fs.vgr_ratio_eqn.deactivate()
+        #     m.fs.makeup_mole_frac_sum_eqn.activate()
+        #     expr += 1e+01 * sum(m.fs.p[t]
+        #                         for t in m.fs.time)
 
         return expr
     

@@ -112,15 +112,15 @@ if __name__ == "__main__":
             include_interconnect=True,
         )
         
-        m.fs.p = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
+        # m.fs.p = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
         # m.fs.n = pyo.Var(m.fs.time,
         #                   initialize=0,
         #                   domain=pyo.NonNegativeReals)
-        m.fs.q = pyo.Var(m.fs.time,
-                          initialize=0,
-                          domain=pyo.NonNegativeReals)
+        # m.fs.q = pyo.Var(m.fs.time,
+        #                   initialize=0,
+        #                   domain=pyo.NonNegativeReals)
         # m.fs.r = pyo.Var(m.fs.time,
         #                   initialize=0,
         #                   domain=pyo.NonNegativeReals)
@@ -137,7 +137,7 @@ if __name__ == "__main__":
         #                   initialize=0,
         #                   domain=pyo.NonNegativeReals)
 
-        if not plant:
+        # if not plant:
             # dTdz_electrode_lim = 675
             
             # @m.fs.Constraint(m.fs.time)
@@ -149,14 +149,14 @@ if __name__ == "__main__":
             #     return b.makeup_mix.makeup_mole_frac_comp_H2O[t] == \
             #         0.999 - 1e-14 - b.n[t]
             
-            @m.fs.Constraint(m.fs.time)
-            def vgr_ratio_eqn(b, t):
-                return b.condenser_split.recycle_ratio[t] == 1e-4 + b.q[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def vgr_ratio_eqn(b, t):
+            #     return b.condenser_split.recycle_ratio[t] == 1e-4 + b.q[t]
             
-            @m.fs.Constraint(m.fs.time)
-            def makeup_mole_frac_sum_eqn(b, t):
-                return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
-                    b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.9999 - b.p[t]
+            # @m.fs.Constraint(m.fs.time)
+            # def makeup_mole_frac_sum_eqn(b, t):
+            #     return b.makeup_mix.makeup_mole_frac_comp_H2[t] + \
+            #         b.makeup_mix.makeup_mole_frac_comp_H2O[t] == 0.9999 - b.p[t]
             
             # @m.fs.Constraint(m.fs.time)
             # def condenser_outlet_temp_eqn(b, t):
@@ -364,6 +364,9 @@ if __name__ == "__main__":
             if alias == "cell_average_temperature":
                 val = np.mean([value(temp) for temp in var])
                 controlled_vars_dict[alias].append(val)
+            elif alias == "temperature_gradient":
+                gradients = np.array([value(dTdz) for dTdz in var])
+                controlled_vars_dict[alias].append(gradients)
             else:
                 controlled_vars_dict[alias].append(value(var))
         return None
@@ -378,33 +381,6 @@ if __name__ == "__main__":
 
 
     objective = []
-    
-    
-    def dump_results(filepath):
-        # TODO: Add results and plotting for performance variables like power,
-        # temperature profiles, efficiency etc.
-        """
-        filepath is something like './raw_results_dump/yyyy_mm_dd/'
-        """
-        pickle.dump(controls_dict, open(filepath + 'controls_dict.pkl', 'wb'))
-        pickle.dump(states_dict, open(filepath + 'states_dict.pkl', 'wb'))
-        pickle.dump(h2_production_rate, open(filepath + 'h2_production_rate.pkl', 'wb'))
-        pickle.dump(objective, open(filepath + 'objective.pkl', 'wb'))
-        
-        plt.figure()
-        plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, h2_production_rate)
-        plt.title('h2_production_rate')
-        plt.xlabel('time [hrs]')
-        plt.savefig(filepath + 'h2_production_rate.png')
-        
-        for var, values in controls_dict.items():
-            plt.figure()
-            plt.plot(time_set_nmpc[:len(h2_production_rate)] / 3600, values)
-            plt.title(var)
-            plt.xlabel('time [hrs]')
-            plt.savefig(filepath + var + '.png')
-        
-        return None
     
     
     def write_nl(m, file_prefix='tracking'):
@@ -438,7 +414,7 @@ if __name__ == "__main__":
         return extra_dofs
     
     
-    def make_plots(savefig=False):
+    def make_plots(filepath='./raw_results_dump/tmp/', savefig=False):
         tracking_targets = get_tracking_targets(plant)
         
         def demarcate_ramps(ax):
@@ -497,6 +473,9 @@ if __name__ == "__main__":
                 ax.set_xlabel('time [hrs]')
             fig.tight_layout()
             
+            if savefig:
+                plt.savefig(filepath + alias + '.png')
+            
             return None
         
         # hydrogen production rate
@@ -514,6 +493,8 @@ if __name__ == "__main__":
         ax.set_title('h2_production_rate')
         ax.set_xlabel('time [hrs]')
         fig.tight_layout()
+        if savefig:
+            plt.savefig(filepath + 'h2_production_rate.png')
         
         # controls
         var_dict = controls_dict
@@ -550,19 +531,46 @@ if __name__ == "__main__":
                    "sweep_heater_outlet_temperature"]
         make_subplots(var_dict, aliases)
 
+        # cell temperatures
         aliases = ["fuel_outlet_temperature",
                    "sweep_outlet_temperature",
                    "stack_core_temperature"]
         make_subplots(var_dict, aliases)
- 
+
+        # oxygen out and hydrogen in
         aliases = ["oxygen_out", "hydrogen_in"]
         make_subplots(var_dict, aliases)
-               
+
+        # hydrogen mole fraction in fuel outlet
+        aliases = ["fuel_outlet_mole_frac_comp_H2"]
+        make_subplots(var_dict, aliases)
+
+        # stack inlet temperatures
         aliases = ["fuel_inlet_temperature",
                    "sweep_inlet_temperature",
                    "cell_average_temperature"]
         make_subplots(var_dict, aliases)
 
+        return None
+
+
+    def dump_results(filepath):
+        # TODO: Add results and plotting for performance variables like power,
+        # temperature profiles, efficiency etc.
+        """
+        filepath is something like './raw_results_dump/yyyy_mm_dd/'
+        """
+        pickle.dump(controls_dict, open(filepath + 'controls_dict.pkl', 'wb'))
+        pickle.dump(
+            controlled_vars_dict,
+            open(filepath + 'controlled_vars_dict.pkl', 'wb')
+        )
+        pickle.dump(states_dict, open(filepath + 'states_dict.pkl', 'wb'))
+        pickle.dump(h2_production_rate, open(filepath + 'h2_production_rate.pkl', 'wb'))
+        pickle.dump(objective, open(filepath + 'objective.pkl', 'wb'))
+        
+        make_plots(filepath=filepath, savefig=True)
+        
         return None
 
 
@@ -578,8 +586,8 @@ if __name__ == "__main__":
     save_states(states_dict)
     
     # save initial controls
-    for mv, alias in get_manipulated_variables(plant).items():
-        controls_dict[alias].append(value(mv[plant.fs.time.last()]))
+    # for mv, alias in get_manipulated_variables(plant).items():
+    #     controls_dict[alias].append(value(mv[plant.fs.time.last()]))
     
     
     idaes.cfg.ipopt.options.tol = 1e-04  # default = 1e-08
@@ -612,9 +620,9 @@ if __name__ == "__main__":
     
 
     # import pdb; pdb.set_trace()
-    # =============================================================================
+    # =========================================================================
     # NMPC
-    # =============================================================================
+    # =========================================================================
     time_set_nmpc = np.linspace(
         0.0,
         nmpc_params['sim_horizon'],
