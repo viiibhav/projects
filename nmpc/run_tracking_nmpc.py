@@ -161,8 +161,16 @@ if __name__ == "__main__":
             # @m.fs.Constraint(m.fs.time)
             # def condenser_outlet_temp_eqn(b, t):
             #     return b.condenser_flash.control_volume.properties_out[t] \
-            #         .temperature == 273.15 + 50 + b.p1[t] - b.n1[t]
-    
+            #         .temperature == 273.15 + 50 + b.p[t] - b.n[t]
+
+            # @m.fs.Constraint(m.fs.time)
+            # def sweep_heater_LB_eqn(b, t):
+            #     return b.sweep_heater.electric_heat_duty[t] >= 0 - b.q[t]
+            
+            # @m.fs.Constraint(m.fs.time)
+            # def feed_heater_LB_eqn(b, t):
+            #     return b.feed_heater.electric_heat_duty[t] >= 0 - b.r[t]
+
             # @m.fs.Constraint(m.fs.time)
             # def feed_recycle_ratio_eqn(b, t):
             #     return b.feed_recycle_split.recycle_ratio[t] == 0.999 - b.n2[t]
@@ -362,11 +370,13 @@ if __name__ == "__main__":
         # tf = plant.fs.time.last()
         for var, alias in get_controlled_variables(plant).items():
             if alias == "cell_average_temperature":
+                # take the mean of sliced component
                 val = np.mean([value(temp) for temp in var])
                 controlled_vars_dict[alias].append(val)
-            elif alias == "temperature_gradient":
-                gradients = np.array([value(dTdz) for dTdz in var])
-                controlled_vars_dict[alias].append(gradients)
+            elif alias == "temperature_gradient" or alias == "current_density":
+                # store values of the entire sliced component
+                values = [value(v) for v in var]
+                controlled_vars_dict[alias].append(values)
             else:
                 controlled_vars_dict[alias].append(value(var))
         return None
@@ -415,14 +425,14 @@ if __name__ == "__main__":
     
     
     def make_plots(filepath='./raw_results_dump/tmp/', savefig=False):
-        tracking_targets = get_tracking_targets(plant)
+        tracking_targets = get_tracking_targets()
         
         def demarcate_ramps(ax):
             ramp_list = nmpc_params['time_set_PI'][1:-1]
             for tpoint in np.squeeze(ramp_list):
                 ax.plot(
                     np.array([tpoint, tpoint]) / 60**2,
-                    [-1e+08, 1e+08],
+                    [-1e+09, 1e+09],
                     color="gray",
                     linestyle='--',
                 )
@@ -479,7 +489,7 @@ if __name__ == "__main__":
             return None
         
         # hydrogen production rate
-        h2_target = np.array(list(get_h2_production_target(plant).values()))
+        h2_target = np.array(list(get_h2_production_target().values()))
         fig, ax = plt.subplots()
         ax.plot(
             time_set_nmpc[:len(h2_production_rate)] / 3600,
@@ -542,13 +552,17 @@ if __name__ == "__main__":
         make_subplots(var_dict, aliases)
 
         # hydrogen mole fraction in fuel outlet
-        aliases = ["fuel_outlet_mole_frac_comp_H2"]
+        aliases = ["soc_fuel_outlet_mole_frac_comp_H2"]
         make_subplots(var_dict, aliases)
 
         # stack inlet temperatures
         aliases = ["fuel_inlet_temperature",
                    "sweep_inlet_temperature",
                    "cell_average_temperature"]
+        make_subplots(var_dict, aliases)
+        
+        # total electric power
+        aliases = ["total_electric_power"]
         make_subplots(var_dict, aliases)
 
         return None
