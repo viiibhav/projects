@@ -41,7 +41,7 @@ import matplotlib.pyplot as plt
 # =============================================================================
 def get_time_coordinates():
     t_start = 0.5 * 60 * 60
-    t_ramp = 1.0 * 60 * 60
+    t_ramp = 0.5 * 60 * 60
     t_settle = 2 * 60 * 60
     t_end = 1 * 60 * 60
     time_set_PI = [0,
@@ -63,6 +63,8 @@ def get_time_coordinates():
     time_set = np.linspace(0, t_last, num=nsteps+1)
     time_set_output = np.linspace(0, t_last + horizon, num=nsteps+1+nsteps_horizon)
     
+    nonlinear_ramping = True
+    
     nmpc_params = {
         't_start': t_start,
         't_ramp': t_ramp,
@@ -79,6 +81,7 @@ def get_time_coordinates():
         'nsteps': nsteps,
         'time_set': time_set,
         'time_set_output': time_set_output,
+        'nonlinear_ramping': nonlinear_ramping
     }
     
     return nmpc_params
@@ -182,11 +185,12 @@ def get_controlled_variables(m):
     cmap[soec.oxygen_channel.temperature_inlet[tf]] = "sweep_inlet_temperature"
     cmap[soec.temperature_z[tf, :]] = "cell_average_temperature"  # take mean over iznodes
     cmap[soec.fuel_electrode.dtemperature_dz[tf, 1, :]] = "temperature_gradient"
+    cmap[soec.current_density[tf, :]] = "current_density"
     return cmap
 
 
 # =============================================================================
-def get_h2_production_target(m, reversible_mode=True):
+def get_h2_production_target(reversible_mode=True):
     df = pd.read_csv(
         "./../../soec_flowsheet_operating_conditions.csv",
         index_col=0,
@@ -225,14 +229,19 @@ def get_h2_production_target(m, reversible_mode=True):
     return h2_target
 
 
-def get_tracking_targets(m):
+def get_coeffs_for_quadratic_ramping():
+    a_dict = {alias: 0.0 for alias in alias_dict.values()}
+    a_dict["potential"] = 3e-08
+    return a_dict
+    
+
+def get_tracking_targets(nonlinear_ramping=nmpc_params['nonlinear_ramping']):
     df = pd.read_csv(
         "./../../soec_flowsheet_operating_conditions.csv",
         index_col=0,
     )
 
     def get_setpoint_trajectory(alias, reversible_mode=True):
-        # alias = alias_dict[var.name]
         if reversible_mode:
             sp_hydrogen_hi = df[alias]["maximum_H2"]
             sp_hydrogen_lo = df[alias]["power"]
@@ -241,13 +250,36 @@ def get_tracking_targets(m):
             sp_hydrogen_lo = df[alias]["minimum_H2"]
         
         def ramp_var(t, ramp_down):
-            slope = (sp_hydrogen_hi - sp_hydrogen_lo) / nmpc_params['t_ramp']
-            if ramp_down:
-                t_ramp_start = nmpc_params['time_set_PI'][1]
-                return sp_hydrogen_hi - slope * (t - t_ramp_start)
+            if nonlinear_ramping:
+                # y = ax**2 + b * x + c; solve for b and c
+                # tracking vars must use different values of a
+                if ramp_down:
+                    t1 = nmpc_params['time_set_PI'][1]
+                    t2 = nmpc_params['time_set_PI'][2]
+                    y1 = sp_hydrogen_hi
+                    y2 = sp_hydrogen_lo
+                    # a = - (y1 - y2) / (2 * t2 * (t1 - t2))
+                else:
+                    t1 = nmpc_params['time_set_PI'][3]
+                    t2 = nmpc_params['time_set_PI'][4]
+                    y1 = sp_hydrogen_lo
+                    y2 = sp_hydrogen_hi
+                    # a = - (y1 - y2) / (2 * t1 * (t1 - t2))
+                
+                a_dict = get_coeffs_for_quadratic_ramping()
+                a = a_dict[alias]
+                b = ((y1 - y2) - a * (t1**2 - t2**2)) / (t1 - t2)
+                c = ((y1 * t2 - y2 * t1) - a * (t1**2 * t2 - t2**2 * t1)) / (t2 - t1)
+                return a * t**2 + b * t + c
+
             else:
-                t_ramp_start = nmpc_params['time_set_PI'][3]
-                return sp_hydrogen_lo + slope * (t - t_ramp_start)
+                slope = (sp_hydrogen_hi - sp_hydrogen_lo) / nmpc_params['t_ramp']
+                if ramp_down:
+                    t_ramp_start = nmpc_params['time_set_PI'][1]
+                    return sp_hydrogen_hi - slope * (t - t_ramp_start)
+                else:
+                    t_ramp_start = nmpc_params['time_set_PI'][3]
+                    return sp_hydrogen_lo + slope * (t - t_ramp_start)
         
         var_target = {t: 0.0 for t in nmpc_params['time_set_output']}
         for t in nmpc_params['time_set_output']:
@@ -265,18 +297,53 @@ def get_tracking_targets(m):
         return var_target
     
     tracking_targets = {alias: {} for alias in alias_dict.values()}
-    # tracking_variables = get_tracking_variables(m)
     for alias in alias_dict.values():
-        # alias = alias_dict[var.name]
         target = get_setpoint_trajectory(alias)
         tracking_targets[alias] = target
     
     return tracking_targets
 
 
+def plot_tracking_targets(nonlinear_ramping=nmpc_params['nonlinear_ramping']):
+    
+    def demarcate_ramps(ax):
+        ramp_list = nmpc_params['time_set_PI'][1:-1]
+        for tpoint in np.squeeze(ramp_list):
+            ax.plot(
+                np.array([tpoint, tpoint]) / 60**2,
+                [-1e+09, 1e+09],
+                color="gray",
+                linestyle='--',
+            )
+        return None
+    
+    tracking_targets = get_tracking_targets(nonlinear_ramping=nonlinear_ramping)
+    for alias in tracking_targets.keys():
+        target = np.array(list(tracking_targets[alias].values()))
+        fig, ax = plt.subplots()
+        ax.plot(
+            nmpc_params['time_set_output'] / 3600,
+            target,
+            "r--",
+        )
+        demarcate_ramps(ax)
+        ymin = min(target)
+        ymax = max(target)
+        ylim = [
+            ymin - 0.05 * (ymax - ymin),
+            ymax + 0.05 * (ymax - ymin),
+        ]
+        ax.set_ylim(ylim)
+        ax.set_title(alias)
+        ax.set_xlabel('time [hrs]')
+        plt.tight_layout()
+    
+    return None
+
+
 def get_h2_target_for_control_horizon(m, iter):
     tset = m.fs.time
-    h2_target = get_h2_production_target(m)
+    h2_target = get_h2_production_target()
     h2_target_list = list(h2_target.values())
     h2_target_for_horizon = h2_target_list[iter:iter+len(tset)]
     h2_target_for_horizon = {t: h for t, h in zip(tset, h2_target_for_horizon)}
@@ -285,7 +352,7 @@ def get_h2_target_for_control_horizon(m, iter):
 
 def get_tracking_targets_for_control_horizon(m, iter):
     tset = m.fs.time
-    tracking_targets = get_tracking_targets(m)
+    tracking_targets = get_tracking_targets(nonlinear_ramping=nmpc_params['nonlinear_ramping'])
     tracking_targets_for_horizon = {alias: [] for alias in alias_dict.values()}
     for alias in alias_dict.values():
         target_list = list(tracking_targets[alias].values())
@@ -393,13 +460,13 @@ def make_tracking_objective(m, iter):
              - m.fs.feed_heater.electric_heat_duty[m.fs.time.prev(t)])**2
             for t in m.fs.time
             if t != m.fs.time.first()
-        )
+        )# * 1e+02
         expr += mv_multiplier * 1e-14 * sum(
             (m.fs.sweep_heater.electric_heat_duty[t]
              - m.fs.sweep_heater.electric_heat_duty[m.fs.time.prev(t)])**2
             for t in m.fs.time
             if t != m.fs.time.first()
-        )
+        )# * 1e+04
 
         # Penalties on controlled variable deviations
         # mv_multiplier = 1e-06
@@ -407,7 +474,7 @@ def make_tracking_objective(m, iter):
             (m.fs.soc_module.fuel_outlet_mole_frac_comp_H2[t]
              - soc_fuel_outlet_mole_frac_comp_H2[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
-        )
+        )# * 1e+01
         expr += mv_multiplier * 1e-03 * sum(
             (m.fs.feed_heater.outlet.temperature[t]
              - feed_heater_outlet_temperature[t])**2 for t in m.fs.time
@@ -432,7 +499,7 @@ def make_tracking_objective(m, iter):
             (m.fs.stack_core_temperature[t]
              - stack_core_temperature[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
-        )
+        )# * 1e-03
         expr += mv_multiplier * 1e+01 * sum(
             (m.fs.sweep_recycle_split.mixed_state[t].mole_frac_comp['O2']
              - oxygen_out[t])**2 for t in m.fs.time
@@ -442,11 +509,25 @@ def make_tracking_objective(m, iter):
             (m.fs.feed_recycle_mix.mixed_state[t].mole_frac_comp['H2']
              - hydrogen_in[t])**2 for t in m.fs.time
             if t != m.fs.time.first()
-        )
+        )# * 1e+02
 
         # l1-penalties
         # m.fs.condenser_outlet_temp_eqn.activate()
-        # expr += 1e+01 * sum(m.fs.p1[t] + m.fs.n1[t] for t in m.fs.time)
+        # expr += 1e+02 * sum(
+        #     m.fs.p[t] + m.fs.n[t] for t in m.fs.time
+        #     if t != m.fs.time.first()
+        # )
+
+        # m.fs.sweep_heater_LB_eqn.activate()
+        # m.fs.feed_heater_LB_eqn.activate()
+        # expr += 1e+02 * sum(
+        #     m.fs.q[t] for t in m.fs.time
+        #     if t != m.fs.time.first()
+        # )
+        # expr += 1e+02 * sum(
+        #     m.fs.r[t] for t in m.fs.time
+        #     if t != m.fs.time.first()
+        # )
 
         # m.fs.feed_recycle_ratio_eqn.activate()
         # expr += 1e+01 * sum(m.fs.n2[t] for t in m.fs.time)
