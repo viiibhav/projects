@@ -10,32 +10,54 @@ from nmpc_helper import alias_dict, get_time_coordinates
 def get_nmpc_results(filepath):
     controls_dict = pickle.load(open(filepath + 'controls_dict.pkl', 'rb'))
     CVs_dict = pickle.load(open(filepath + 'cvs_dict.pkl', 'rb'))
-    states_dict = pickle.load(open(filepath + 'states_dict.pkl', 'rb'))
+    # states_dict = pickle.load(open(filepath + 'states_dict.pkl', 'rb'))
     h2_production_rate = pickle.load(
         open(filepath + 'h2_production_rate.pkl', 'rb')
     )
-    dTdz_electrode_logbook = pickle.load(
-        open(filepath + 'temperature_gradients.pkl', 'rb')
-    )
-    return [controls_dict,
-            CVs_dict,
-            states_dict,
-            h2_production_rate,
-            dTdz_electrode_logbook]
+    power_dict = pickle.load(open(filepath + 'power_dict.pkl', 'rb'))
+    setpoint_dict = pickle.load(open(filepath + 'setpoint_dict.pkl', 'rb'))
+    sim_time_set = pickle.load(open(filepath + 'sim_time_set.pkl', 'rb'))
+    try:
+        dTdz_electrode_logbook = pickle.load(
+            open(filepath + 'temperature_gradients.pkl', 'rb')
+        )
+    except:
+        dTdz_electrode_logbook = pickle.load(
+            open(filepath + 'dTdz_electrode_dict.pkl', 'rb')
+        )
+
+    # out = [
+    #     controls_dict,
+    #     CVs_dict,
+    #     states_dict,
+    #     h2_production_rate,
+    #     dTdz_electrode_logbook,
+    # ]
+    out = [
+        controls_dict,
+        CVs_dict,
+        h2_production_rate,
+        power_dict,
+        setpoint_dict,
+        sim_time_set,
+        dTdz_electrode_logbook,
+    ]
+    return out
 
 def _demarcate_ramps(ax, results_dict):
     for tpoint in np.squeeze(results_dict["ramp_list"])[:-1]:
         ax.plot(
             np.array([tpoint, tpoint]) / 60 ** 2,
-            [-1e6, 1e6],
-            color="darkgray",
+            [-1e9, 1e9],
+            color="gray",
             linestyle="--",
         )
 
 def plot_results(filename, nmpc_filepath, include_PI):
     results_dict = loadmat(filename)
-    controls_dict, CVs_dict, states_dict, h2_production_rate, \
-        dTdz_electrode_logbook = get_nmpc_results(nmpc_filepath)
+    controls_dict, CVs_dict, h2_production_rate, power_dict, \
+        setpoint_dict, sim_time_set, dTdz_electrode_logbook \
+        = get_nmpc_results(nmpc_filepath)
 
     for key, value in results_dict.items():
         # Turn n by 1 arrays in into vectors
@@ -55,12 +77,12 @@ def plot_results(filename, nmpc_filepath, include_PI):
     fig = plt.figure()
     ax = fig.subplots()
 
-    ax.plot(time, results_dict["potential"], label="PI")
+    ax.plot(time, results_dict["potential"], color="darkorange", linewidth=2, linestyle="-.", label="PI")
     if include_PI:
         ax.plot(
             time,
             results_dict["voltage_controller_mv_ref"],
-            color="darkblue",
+            color="black",
             linestyle="dotted",
         )
 
@@ -69,14 +91,15 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.plot(
         time_nmpc[:len(potential)],
         potential[:len(time_nmpc)],
-        color="red",
+        color="blue",
+        linewidth=2,
         label="NMPC"
     )
     
     demarcate_ramps(ax)
     
     ax.set_xlim(time[0], time[-1])
-    ax.set_ylim((0.65, 1.45))
+    ax.set_ylim((0.75, 1.45))
     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
     ax.set_ylabel("Cell potential (V)", fontsize=ax_fontsize)
     ax.set_title("SOEC Voltage", fontsize=title_fontsize)
@@ -85,15 +108,38 @@ def plot_results(filename, nmpc_filepath, include_PI):
     fig = plt.figure()
     ax = fig.subplots()
 
-    ax.plot(time, results_dict["soec_fuel_inlet_flow"], color="blue", label="Fuel")
-    ax.plot(time, results_dict["soec_oxygen_inlet_flow"], color="darkblue", label="Sweep")
+    ax.plot(
+        time,
+        results_dict["soec_fuel_inlet_flow"],
+        color="blue",
+        linestyle="-.",
+        linewidth=2,
+        label="Fuel PI",
+    )
+    ax.plot(
+        time,
+        results_dict["soec_oxygen_inlet_flow"],
+        color="darkorange",
+        linestyle="-.",
+        linewidth=2,
+        label="Sweep PI",
+    )
     
-    # key_H2, = [k for k, v in alias_dict.items() if v == "hydrogen_in"]
-    # key_O2, = [k for k, v in alias_dict.items() if v == "oxygen_out"]
-    # H2_in = CVs_dict[key_H2]
-    # O2_in = CVs_
+    # H2_in = CVs_dict["soec_fuel_inlet_flow"]
+    # O2_in = CVs_dict["soec_oxygen_inlet_flow"]
     # ax.plot(
-    #     time_nmpc[]
+    #     time_nmpc,
+    #     H2_in[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="Fuel NMPC",
+    # )
+    # ax.plot(
+    #     time_nmpc,
+    #     O2_in[:len(time_nmpc)],
+    #     color="darkorange",
+    #     linewidth=2,
+    #     label="Sweep NMPC",
     # )
     
     demarcate_ramps(ax)
@@ -105,22 +151,36 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.legend()
 
     fig = plt.figure()
-    ax = fig.subplots()
-    ax.plot(time, 1e-6 * results_dict["fuel_heater_duty"], label="Fuel PI", color="navy")
-    ax.plot(time, 1e-6 * results_dict["sweep_heater_duty"], label="Sweep PI", color="deepskyblue")
+    ax1, ax2 = fig.subplots(2, 1, sharex=True)
+    ax1.plot(
+        time,
+        1e-6 * results_dict["fuel_heater_duty"],
+        color="blue",
+        linestyle="-.",
+        linewidth=2,
+        label="Fuel PI",
+    )
+    ax2.plot(
+        time,
+        1e-6 * results_dict["sweep_heater_duty"],
+        color="darkorange",
+        linestyle="-.",
+        linewidth=2,
+        label="Sweep PI",
+    )
     if include_PI:
-        ax.plot(
+        ax1.plot(
             time,
             1e-6 * results_dict["feed_heater_inner_controller_mv_ref"],
             label="Fuel reference",
-            color="navy",
+            color="blue",
             linestyle="dotted"
         )
-        ax.plot(
+        ax2.plot(
             time,
             1e-6 * results_dict["sweep_heater_inner_controller_mv_ref"],
             label="Sweep reference",
-            color="blue",
+            color="darkorange",
             linestyle="dotted"
         )
     
@@ -128,98 +188,160 @@ def plot_results(filename, nmpc_filepath, include_PI):
     key_sweep, = [k for k, v in alias_dict.items() if v == "sweep_heater_duty"]
     feed_heater_duty = controls_dict[key_fuel]
     sweep_heater_duty = controls_dict[key_sweep]
-    ax.plot(
+    ax1.plot(
         time_nmpc[:len(feed_heater_duty)],
         1e-06 * np.array(feed_heater_duty[:len(time_nmpc)]),
-        color="firebrick",
+        color="blue",
+        linewidth=2,
         label="Fuel NMPC",
     )
-    ax.plot(
+    ax2.plot(
         time_nmpc[:len(sweep_heater_duty)],
         1e-06 * np.array(sweep_heater_duty[:len(time_nmpc)]),
         color="darkorange",
+        linewidth=2,
         label="Sweep NMPC",
     )
     
-    demarcate_ramps(ax)
-    ax.set_xlim(time[0], time[-1])
-    ax.set_ylim((0, 13))
-    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-    ax.set_ylabel("Heater duty (MW)", fontsize=ax_fontsize)
-    ax.set_title("Trim heater duties", fontsize=title_fontsize)
-    ax.legend()
+    demarcate_ramps(ax1)
+    demarcate_ramps(ax2)
+    ax1.set_xlim(time[0], time[-1])
+    ax2.set_xlim(time[0], time[-1])
+    ax1.set_ylim((0, 7))
+    ax2.set_ylim((0, 12))
+    ax2.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+    ax1.set_ylabel("Heater duty (MW)", fontsize=ax_fontsize)
+    ax2.set_ylabel("Heater duty (MW)", fontsize=ax_fontsize)
+    ax1.set_title("Fuel", fontsize=ax_fontsize)
+    ax2.set_title("Sweep", fontsize=ax_fontsize)
+    fig.suptitle("Trim heater duties", fontsize=title_fontsize)
+    ax1.legend()
+    ax2.legend()
 
 
     fig = plt.figure()
-    ax = fig.subplots()
-    if include_PI:
-        ax.plot(
-            time,
-            1e-6 * results_dict["feed_heater_inner_controller_mv_ref"],
-            label="Fuel reference",
-            color="navy",
-            linestyle="dotted"
-        )
-        ax.plot(
-            time,
-            1e-6 * results_dict["sweep_heater_inner_controller_mv_ref"],
-            label="Sweep reference",
-            color="blue",
-            linestyle="dotted"
-        )
-    
-    key_fuel, = [k for k, v in alias_dict.items() if v == "feed_heater_duty"]
-    key_sweep, = [k for k, v in alias_dict.items() if v == "sweep_heater_duty"]
-    feed_heater_duty = controls_dict[key_fuel]
-    sweep_heater_duty = controls_dict[key_sweep]
-    ax.plot(
-        time_nmpc[:len(feed_heater_duty)],
-        1e-06 * np.array(feed_heater_duty[:len(time_nmpc)]),
-        color="firebrick",
-        label="Fuel NMPC",
+    ax1, ax2, ax3 = fig.subplots(3, 1, sharex=True)
+    ax1.plot(
+        time,
+        results_dict["fuel_inlet_H2O"],
+        color="blue",
+        linestyle="-.",
+        linewidth=2,
+        label="Inlet H$_2$O PI",
     )
-    ax.plot(
-        time_nmpc[:len(sweep_heater_duty)],
-        1e-06 * np.array(sweep_heater_duty[:len(time_nmpc)]),
+    ax1.plot(
+        time,
+        results_dict["fuel_outlet_H2O"],
         color="darkorange",
-        label="Sweep NMPC",
+        linestyle="-.",
+        linewidth=2,
+        label="Outlet H$_2$O PI",
     )
+    # water_in = CVs_dict["fuel_inlet_H2O"]
+    # water_out = CVs_dict["fuel_outlet_H2O"]
+    # ax1.plot(
+    #     time_nmpc,
+    #     water_in[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="Inlet H$_2$O NMPC",
+    # )
+    # ax1.plot(
+    #     time_nmpc,
+    #     water_out[:len(time_nmpc)],
+    #     color="darkorange",
+    #     linewidth=2,
+    #     label="Outlet H$_2$O NMPC",
+    # )
+    ax1.plot(time, 0.25 * np.ones(time.shape), color="gray", linestyle='--')
+    demarcate_ramps(ax1)
+    ax1.set_xlim(time[0], time[-1])
+    ax1.set_ylim((0, 1))
+    ax1.set_ylabel("Mole fraction", fontsize=ax_fontsize)
+    ax1.legend(ncols=2)
     
-    demarcate_ramps(ax)
-    ax.set_xlim(time[0], time[-1])
-    ax.set_ylim((0, 2))
-    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-    ax.set_ylabel("Heater duty (MW)", fontsize=ax_fontsize)
-    ax.set_title("Trim heater duties", fontsize=title_fontsize)
-    ax.legend()
+    ax2.plot(
+        time,
+        results_dict["sweep_inlet_O2"],
+        color="blue",
+        linestyle="-.",
+        linewidth=2,
+        label="Inlet O$_2$ PI",
+    )
+    ax2.plot(
+        time,
+        results_dict["sweep_outlet_O2"],
+        color="darkorange",
+        linestyle="-.",
+        linewidth=2,
+        label="Outlet O$_2$ PI",
+    )
+    # oxygen_in = CVs_dict["sweep_inlet_O2"]
+    # oxygen_out = CVs_dict["sweep_outlet_O2"]
+    # ax2.plot(
+    #     time_nmpc,
+    #     oxygen_in[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="Inlet O$_2$ NMPC",
+    # )
+    # ax2.plot(
+    #     time_nmpc,
+    #     oxygen_out[:len(time_nmpc)],
+    #     color="darkorange",
+    #     linewidth=2,
+    #     label="Outlet O$_2$ NMPC",
+    # )
+    ax2.plot(time, 0.35 * np.ones(time.shape), color="gray", linestyle='--')
+    demarcate_ramps(ax2)
+    ax2.set_xlim(time[0], time[-1])
+    ax2.set_ylim((0, 1))
+    ax2.set_ylabel("Mole fraction", fontsize=ax_fontsize)
+    ax2.legend(ncols=2)
+
+    ax3.plot(
+        time,
+        results_dict["product_mole_frac_H2"],
+        linewidth=2,
+        color="darkorange",
+        linestyle="",
+        marker="o",
+        label="Product H$_2$ PI",
+    )
+    # product_h2 = CVs_dict["product_mole_frac_H2"]
+    # ax3.plot(
+    #     time_nmpc,
+    #     product_h2[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="Product H$_2$ NMPC",
+    # )
+    demarcate_ramps(ax3)
+    ax3.set_xlim(time[0], time[-1])
+    ax3.set_ylim((0.5, 1))
+    ax3.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+    ax3.set_ylabel("Mole fraction", fontsize=ax_fontsize)
+    ax3.legend()
+    fig.suptitle("Reactor feed and effluent concentrations", fontsize=title_fontsize)
 
     fig = plt.figure()
     ax = fig.subplots()
-    ax.plot(time, results_dict["fuel_inlet_H2O"], label="Inlet $H_2O$")
-    ax.plot(time, results_dict["fuel_outlet_H2O"], label="Outlet $H_2O$")
-    ax.plot(time, results_dict["sweep_inlet_O2"], label="Inlet $O_2$")
-    ax.plot(time, results_dict["sweep_outlet_O2"], label="Outlet $O_2$")
-    ax.plot(time, results_dict["product_mole_frac_H2"], label="Product $H_2$")
-    ax.plot(time, 0.35 * np.ones(time.shape), '--')
-    ax.plot(time, 0.25 * np.ones(time.shape), '--')
-    demarcate_ramps(ax)
-    ax.set_xlim(time[0], time[-1])
-    ax.set_ylim((0, 1))
-    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-    ax.set_ylabel("Mole fraction", fontsize=ax_fontsize)
-    ax.set_title("Reactor feed and effluent concentrations", fontsize=title_fontsize)
-    ax.legend()
-
-    fig = plt.figure()
-    ax = fig.subplots()
-    ax.plot(time, results_dict["H2_production"], label="PI")
-    ax.plot(time, 0.4 * np.ones(time.shape), 'r--')
-    ax.plot(time, 2 * np.ones(time.shape), 'r--')
+    ax.plot(
+        time,
+        results_dict["H2_production"],
+        color="darkorange",
+        linestyle="-.",
+        linewidth=2,
+        label="PI",
+    )
+    ax.plot(time, -0.9192 * np.ones(time.shape), 'r:')
+    ax.plot(time, 2 * np.ones(time.shape), 'r:')
     
     ax.plot(
         time_nmpc[:len(h2_production_rate)],
         np.array(h2_production_rate[:len(time_nmpc)]),
-        color="red",
+        color="blue",
+        linewidth=2,
         label="NMPC",
     )
     
@@ -229,89 +351,129 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
     ax.set_ylabel("Hydrogen Production Rate (kg/s)", fontsize=ax_fontsize)
     ax.set_title("Instantaneous $H_2$ production rate", fontsize=title_fontsize)
-
-    # if include_PI:
-    #     ax.plot(
-    #         time,
-    #         results_dict["h2_production_rate_controller_setpoint"],
-    #         label="Target",
-    #         color="darkblue",
-    #         linestyle="dotted"
-    #     )
     ax.legend()
 
-#     fig = plt.figure()
-#     ax = fig.subplots()
-#     ax.plot(time, results_dict["steam_feed_rate"])
-#     # if include_PI:
-#     #     ax.plot(time,
-#     #             results_dict["h2_production_rate_controller_mv_ref"],
-#     #             label="Target",
-#     #             color="darkblue",
-#     #             linestyle="dotted"
-#     #     )
-#     demarcate_ramps(ax)
-#     ax.set_xlim(time[0], time[-1])
-#     ax.set_ylim((0, 7500))
-#     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-#     ax.set_ylabel("Steam feed rate (mol/s)", fontsize=ax_fontsize)
-#     ax.set_title("Steam feed rate", fontsize=title_fontsize)
-#     ax.legend()
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.plot(
+        time,
+        results_dict["steam_feed_rate"],
+        color="darkorange",
+        linewidth=2,
+        linestyle="-.",
+        label="PI",
+    )
+    # steam_feed_rate = CVs_dict["steam_feed_rate"]
+    # ax.plot(
+    #     time_nmpc,
+    #     steam_feed_rate[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="NMPCs",
+    # )        
+    demarcate_ramps(ax)
+    ax.set_xlim(time[0], time[-1])
+    ax.set_ylim((0, 5000))
+    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+    ax.set_ylabel("Steam feed rate (mol/s)", fontsize=ax_fontsize)
+    ax.set_title("Steam feed rate", fontsize=title_fontsize)
+    ax.legend()
 
-#     fig = plt.figure()
-#     ax = fig.subplots()
-#     # ax2 = ax.twinx()
-#     ax.plot(time, 1e-6 * results_dict["total_electric_power"], 'b', label="Total power")
-#     # ax2.plot(time, results_dict["efficiency_lhv"], 'r', label="Efficiency (LHV)")
-#     demarcate_ramps(ax)
-#     ax.set_xlim(time[0], time[-1])
-#     ax.set_ylim((-125, 350))
-#     # ax2.set_ylim((0, 1.4))
-#     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-#     ax.set_ylabel("Power usage (MW)", color="blue", fontsize=ax_fontsize)
-#     # ax2.set_ylabel("Energy per H2 mass (MJ/kg)", color="red",
-#     #                fontsize=ax_fontsize)
-#     # ax2.set_ylabel("Efficiency (LHV)", color="red",
-#     #                fontsize=ax_fontsize)
-#     ax.set_title("Power usage and efficiency", fontsize=title_fontsize)
-#     # ax.legend()
-
-#     fig = plt.figure()
-#     ax = fig.subplots()
-
-#     ax.plot(time, results_dict["fuel_inlet_temperature"], label="Fuel", color="tab:blue")
-#     ax.plot(time, results_dict["sweep_inlet_temperature"], label="Sweep", color="tab:orange")
-#     ax.plot(time, results_dict["cell_average_temperature"], label="Cell average", color="darkgreen")
-
-#     if include_PI:
-#         ax.plot(
-#             time,
-#             results_dict["feed_heater_inner_controller_setpoint"],
-#             label="Fuel target",
-#             color="darkblue",
-#             linestyle="dotted"
-#         )
-#         ax.plot(
-#             time,
-#             results_dict["sweep_heater_inner_controller_setpoint"],
-#             label="Sweep target",
-#             color="saddlebrown",
-#             linestyle="dotted"
-#         )
-
-#     ax.set_xlim(time[0], time[-1])
-#     ax.set_ylim((850, 1150))
-#     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
-#     ax.set_ylabel("Temperature (K)", fontsize=ax_fontsize)
-#     demarcate_ramps(ax)
-#     ax.set_title("SOEC temperature", fontsize=title_fontsize)
-#     ax.legend()
+    fig = plt.figure()
+    ax = fig.subplots()
+    # ax2 = ax.twinx()
+    ax.plot(
+        time,
+        1e-06 * results_dict["total_electric_power"],
+        color='darkorange',
+        linewidth=2,
+        linestyle="-.",
+        label="PI",
+    )
+    # total_electric_power = CVs_dict["total_electric_power"]
+    total_electric_power = power_dict["total_power"]
+    ax.plot(
+        time_nmpc,
+        1e-06 * np.array(total_electric_power[:len(time_nmpc)]),
+        color="blue",
+        linewidth=2,
+        label="NMPC",
+    )
+    # ax2.plot(time, results_dict["efficiency_lhv"], 'r', label="Efficiency (LHV)")
+    demarcate_ramps(ax)
+    ax.set_xlim(time[0], time[-1])
+    ax.set_ylim((-125, 350))
+    # ax2.set_ylim((0, 1.4))
+    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+    ax.set_ylabel("Power usage (MW)", color="blue", fontsize=ax_fontsize)
+    # ax2.set_ylabel("Energy per H2 mass (MJ/kg)", color="red",
+    #                fontsize=ax_fontsize)
+    # ax2.set_ylabel("Efficiency (LHV)", color="red",
+    #                fontsize=ax_fontsize)
+    ax.set_title("Power usage", fontsize=title_fontsize)
+    ax.legend()
 
     fig = plt.figure()
     ax = fig.subplots()
 
-    ax.plot(time, results_dict["fuel_outlet_temperature"], label="Fuel PI", color="navy")
-    ax.plot(time, results_dict["sweep_outlet_temperature"], label="Sweep PI", color="deepskyblue")
+    ax.plot(time, results_dict["fuel_inlet_temperature"], linewidth=2, linestyle="-.", label="Fuel PI", color="darkorange")
+    ax.plot(time, results_dict["sweep_inlet_temperature"], linewidth=2, linestyle="-.", label="Sweep PI", color="blue")
+    ax.plot(time, results_dict["cell_average_temperature"], linewidth=2, linestyle="-.", label="Cell average PI", color="black")
+
+    if include_PI:
+        ax.plot(
+            time,
+            results_dict["feed_heater_inner_controller_setpoint"],
+            label="Fuel target",
+            color="red",
+            linestyle="dotted"
+        )
+        ax.plot(
+            time,
+            results_dict["sweep_heater_inner_controller_setpoint"],
+            label="Sweep target",
+            color="blue",
+            linestyle="dotted"
+        )
+    
+    # fuel_inlet_temperature = CVs_dict["fuel_inlet_temperature"]
+    # sweep_inlet_temperature = CVs_dict["sweep_inlet_temperature"]
+    # cell_average_temperature = CVs_dict["cell_average_temperature"]
+    # ax.plot(
+    #     time_nmpc,
+    #     fuel_inlet_temperature[:len(time_nmpc)],
+    #     color="darkorange",
+    #     linewidth=2,
+    #     label="Fuel NMPC",
+    # )
+    # ax.plot(
+    #     time_nmpc,
+    #     sweep_inlet_temperature[:len(time_nmpc)],
+    #     color="blue",
+    #     linewidth=2,
+    #     label="Sweep NMPC",
+    # )
+    # ax.plot(
+    #     time_nmpc,
+    #     cell_average_temperature[:len(time_nmpc)],
+    #     color="gray",
+    #     linewidth=2,
+    #     label="Cell average NMPC",
+    # )
+
+    ax.set_xlim(time[0], time[-1])
+    ax.set_ylim((850, 1150))
+    ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+    ax.set_ylabel("Temperature (K)", fontsize=ax_fontsize)
+    demarcate_ramps(ax)
+    ax.set_title("SOEC inlet temperature", fontsize=title_fontsize)
+    ax.legend()
+
+    fig = plt.figure()
+    ax = fig.subplots()
+
+    ax.plot(time, results_dict["fuel_outlet_temperature"], label="Fuel PI", color="darkorange", linestyle="-.", linewidth=2)
+    ax.plot(time, results_dict["sweep_outlet_temperature"], label="Sweep PI", color="blue", linestyle="-.", linewidth=2)
     if include_PI:
         ax.plot(
             time,
@@ -335,13 +497,15 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.plot(
         time_nmpc[:len(fuel_outlet_temperature)],
         np.array(fuel_outlet_temperature[:len(time_nmpc)]),
-        color="firebrick",
+        color="darkorange",
+        linewidth=2,
         label="Fuel NMPC",
     )
     ax.plot(
         time_nmpc[:len(sweep_outlet_temperature)],
         np.array(sweep_outlet_temperature[:len(time_nmpc)]),
-        color="darkorange",
+        color="blue",
+        linewidth=2,
         label="Sweep NMPC",
     )
 
@@ -589,6 +753,124 @@ def plot_results(filename, nmpc_filepath, include_PI):
 #     # ax.legend()
 
 #     plt.show()
+
+
+def plot_manipulated_variables(filename, nmpc_filepath, include_PI=True):
+    results_dict = loadmat(filename)
+    controls_dict, CVs_dict, h2_production_rate, power_dict, \
+        setpoint_dict, sim_time_set, dTdz_electrode_logbook \
+        = get_nmpc_results(nmpc_filepath)
+
+    for key, value in results_dict.items():
+        # Turn n by 1 arrays in into vectors
+        results_dict[key] = np.squeeze(value)
+
+    demarcate_ramps = lambda ax: _demarcate_ramps(ax, results_dict)
+    time = results_dict["time"] / 60 ** 2
+    nmpc_params = get_time_coordinates()
+    time_nmpc = np.array(
+        [i * nmpc_params["step"] / 3600 for i in range(nmpc_params["nsteps"])]
+    )
+
+    ax_fontsize = 14
+    title_fontsize = 16
+    iz_plot = [1, 3, 5, 8, 10]
+
+    for i in controls_dict.keys():
+        fig = plt.figure()
+        ax = fig.subplots()
+        values = controls_dict[i][:len(time_nmpc)]
+        target = list(setpoint_dict[alias_dict[i]].values())[:len(time_nmpc)]
+        ax.plot(
+            time_nmpc,
+            values,
+            color='blue',
+            linewidth=2,
+        )
+        ax.plot(
+            time_nmpc,
+            target,
+            color='black',
+            linestyle=':',
+        )
+        demarcate_ramps(ax)
+        ax.set_xlim(time[0], time[-1])
+        if alias_dict[i] == "condenser_hot_outlet_temperature":
+            ymin = 300
+            ymax = 350
+        else:
+            ymin = min(list(target) + list(values))
+            ymax = max(list(target) + list(values))
+            # ymin = min(values)
+            # ymax = min(values)
+        ylim = [
+            ymin - 0.1 * (ymax - ymin),
+            ymax + 0.1 * (ymax - ymin),
+        ]
+        ax.set_ylim(ylim)
+        ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+        ax.set_title(alias_dict[i], fontsize=title_fontsize)
+
+
+def plot_controlled_variables(filename, nmpc_filepath, include_PI=True):
+    results_dict = loadmat(filename)
+    controls_dict, CVs_dict, h2_production_rate, power_dict, \
+        setpoint_dict, sim_time_set, dTdz_electrode_logbook \
+        = get_nmpc_results(nmpc_filepath)
+
+    for key, value in results_dict.items():
+        # Turn n by 1 arrays in into vectors
+        results_dict[key] = np.squeeze(value)
+
+    demarcate_ramps = lambda ax: _demarcate_ramps(ax, results_dict)
+    time = results_dict["time"] / 60 ** 2
+    nmpc_params = get_time_coordinates()
+    time_nmpc = np.array(
+        [i * nmpc_params["step"] / 3600 for i in range(nmpc_params["nsteps"])]
+    )
+
+    ax_fontsize = 14
+    title_fontsize = 16
+    iz_plot = [1, 3, 5, 8, 10]
+
+    for i in CVs_dict.keys():
+        fig = plt.figure()
+        ax = fig.subplots()
+        values = CVs_dict[i][:len(time_nmpc)]
+        try:
+            target = list(setpoint_dict[alias_dict[i]].values())[:len(time_nmpc)]
+        except:
+            target = None
+        ax.plot(
+            time_nmpc,
+            values,
+            color='blue',
+            linewidth=2,
+        )
+        try:
+            ax.plot(
+                time_nmpc,
+                target,
+                color='black',
+                linestyle=':',
+            )
+        except:
+            pass
+        demarcate_ramps(ax)
+        ax.set_xlim(time[0], time[-1])
+        try:
+            ymin = min(list(target) + list(values))
+            ymax = max(list(target) + list(values))
+        except:
+            ymin = min(values)
+            ymax = min(values)
+        ylim = [
+            ymin - 0.1 * (ymax - ymin),
+            ymax + 0.1 * (ymax - ymin),
+        ]
+        ax.set_ylim(ylim)
+        ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
+        ax.set_title(i, fontsize=title_fontsize)
 
 
 def make_paper_figures_old(filename, include_PI):
