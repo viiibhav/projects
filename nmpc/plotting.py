@@ -53,7 +53,7 @@ def _demarcate_ramps(ax, results_dict):
             linestyle="--",
         )
 
-def plot_results(filename, nmpc_filepath, include_PI):
+def plot_results(filename, nmpc_filepath, include_PI, savefig=False):
     results_dict = loadmat(filename)
     controls_dict, CVs_dict, h2_production_rate, power_dict, \
         setpoint_dict, sim_time_set, dTdz_electrode_logbook \
@@ -104,6 +104,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.set_ylabel("Cell potential (V)", fontsize=ax_fontsize)
     ax.set_title("SOEC Voltage", fontsize=title_fontsize)
     ax.legend(loc="best")
+    if savefig:
+        plt.savefig(nmpc_filepath + 'potential.png')
+        plt.savefig(nmpc_filepath + 'potential.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -125,22 +128,22 @@ def plot_results(filename, nmpc_filepath, include_PI):
         label="Sweep PI",
     )
     
-    # H2_in = CVs_dict["soec_fuel_inlet_flow"]
-    # O2_in = CVs_dict["soec_oxygen_inlet_flow"]
-    # ax.plot(
-    #     time_nmpc,
-    #     H2_in[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="Fuel NMPC",
-    # )
-    # ax.plot(
-    #     time_nmpc,
-    #     O2_in[:len(time_nmpc)],
-    #     color="darkorange",
-    #     linewidth=2,
-    #     label="Sweep NMPC",
-    # )
+    H2_in = CVs_dict["soec_fuel_inlet_flow"]
+    O2_in = CVs_dict["soec_oxygen_inlet_flow"]
+    ax.plot(
+        time_nmpc,
+        H2_in[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="Fuel NMPC",
+    )
+    ax.plot(
+        time_nmpc,
+        O2_in[:len(time_nmpc)],
+        color="darkorange",
+        linewidth=2,
+        label="Sweep NMPC",
+    )
     
     demarcate_ramps(ax)
     ax.set_xlim(time[0], time[-1])
@@ -149,6 +152,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.set_ylabel("SOEC inlet molar flow (mol/s)", fontsize=ax_fontsize)
     ax.set_title("Inlet molar flow rates", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'inlet_flow_rates.png')
+        plt.savefig(nmpc_filepath + 'inlet_flow_rates.pdf')
 
     fig = plt.figure()
     ax1, ax2 = fig.subplots(2, 1, sharex=True)
@@ -217,6 +223,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     fig.suptitle("Trim heater duties", fontsize=title_fontsize)
     ax1.legend()
     ax2.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'trim_heater_duties.png')
+        plt.savefig(nmpc_filepath + 'trim_heater_duties.pdf')
 
 
     fig = plt.figure()
@@ -237,22 +246,22 @@ def plot_results(filename, nmpc_filepath, include_PI):
         linewidth=2,
         label="Outlet H$_2$O PI",
     )
-    # water_in = CVs_dict["fuel_inlet_H2O"]
-    # water_out = CVs_dict["fuel_outlet_H2O"]
-    # ax1.plot(
-    #     time_nmpc,
-    #     water_in[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="Inlet H$_2$O NMPC",
-    # )
-    # ax1.plot(
-    #     time_nmpc,
-    #     water_out[:len(time_nmpc)],
-    #     color="darkorange",
-    #     linewidth=2,
-    #     label="Outlet H$_2$O NMPC",
-    # )
+    water_in = CVs_dict["fuel_inlet_H2O"]
+    water_out = CVs_dict["fuel_outlet_H2O"]
+    ax1.plot(
+        time_nmpc,
+        water_in[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="Inlet H$_2$O NMPC",
+    )
+    ax1.plot(
+        time_nmpc,
+        water_out[:len(time_nmpc)],
+        color="darkorange",
+        linewidth=2,
+        label="Outlet H$_2$O NMPC",
+    )
     ax1.plot(time, 0.25 * np.ones(time.shape), color="gray", linestyle='--')
     demarcate_ramps(ax1)
     ax1.set_xlim(time[0], time[-1])
@@ -276,22 +285,22 @@ def plot_results(filename, nmpc_filepath, include_PI):
         linewidth=2,
         label="Outlet O$_2$ PI",
     )
-    # oxygen_in = CVs_dict["sweep_inlet_O2"]
-    # oxygen_out = CVs_dict["sweep_outlet_O2"]
-    # ax2.plot(
-    #     time_nmpc,
-    #     oxygen_in[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="Inlet O$_2$ NMPC",
-    # )
-    # ax2.plot(
-    #     time_nmpc,
-    #     oxygen_out[:len(time_nmpc)],
-    #     color="darkorange",
-    #     linewidth=2,
-    #     label="Outlet O$_2$ NMPC",
-    # )
+    oxygen_in = CVs_dict["sweep_inlet_O2"]
+    oxygen_out = CVs_dict["sweep_outlet_O2"]
+    ax2.plot(
+        time_nmpc,
+        oxygen_in[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="Inlet O$_2$ NMPC",
+    )
+    ax2.plot(
+        time_nmpc,
+        oxygen_out[:len(time_nmpc)],
+        color="darkorange",
+        linewidth=2,
+        label="Outlet O$_2$ NMPC",
+    )
     ax2.plot(time, 0.35 * np.ones(time.shape), color="gray", linestyle='--')
     demarcate_ramps(ax2)
     ax2.set_xlim(time[0], time[-1])
@@ -308,14 +317,14 @@ def plot_results(filename, nmpc_filepath, include_PI):
         marker="o",
         label="Product H$_2$ PI",
     )
-    # product_h2 = CVs_dict["product_mole_frac_H2"]
-    # ax3.plot(
-    #     time_nmpc,
-    #     product_h2[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="Product H$_2$ NMPC",
-    # )
+    product_h2 = CVs_dict["product_mole_frac_H2"]
+    ax3.plot(
+        time_nmpc,
+        product_h2[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="Product H$_2$ NMPC",
+    )
     demarcate_ramps(ax3)
     ax3.set_xlim(time[0], time[-1])
     ax3.set_ylim((0.5, 1))
@@ -323,6 +332,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax3.set_ylabel("Mole fraction", fontsize=ax_fontsize)
     ax3.legend()
     fig.suptitle("Reactor feed and effluent concentrations", fontsize=title_fontsize)
+    if savefig:
+        plt.savefig(nmpc_filepath + 'feed_effluent_concentrations.png')
+        plt.savefig(nmpc_filepath + 'feed_effluent_concentrations.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -350,8 +362,11 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.set_ylim((-1.25, 2.5))
     ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
     ax.set_ylabel("Hydrogen Production Rate (kg/s)", fontsize=ax_fontsize)
-    ax.set_title("Instantaneous $H_2$ production rate", fontsize=title_fontsize)
+    ax.set_title("Instantaneous H$_2$ production rate", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'hydrogen_production_rate.png')
+        plt.savefig(nmpc_filepath + 'hydrogen_production_rate.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -363,14 +378,14 @@ def plot_results(filename, nmpc_filepath, include_PI):
         linestyle="-.",
         label="PI",
     )
-    # steam_feed_rate = CVs_dict["steam_feed_rate"]
-    # ax.plot(
-    #     time_nmpc,
-    #     steam_feed_rate[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="NMPCs",
-    # )        
+    steam_feed_rate = CVs_dict["steam_feed_rate"]
+    ax.plot(
+        time_nmpc,
+        steam_feed_rate[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="NMPCs",
+    )
     demarcate_ramps(ax)
     ax.set_xlim(time[0], time[-1])
     ax.set_ylim((0, 5000))
@@ -378,6 +393,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     ax.set_ylabel("Steam feed rate (mol/s)", fontsize=ax_fontsize)
     ax.set_title("Steam feed rate", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'steam_feed_rate.png')
+        plt.savefig(nmpc_filepath + 'steam_feed_rate.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -390,8 +408,8 @@ def plot_results(filename, nmpc_filepath, include_PI):
         linestyle="-.",
         label="PI",
     )
-    # total_electric_power = CVs_dict["total_electric_power"]
-    total_electric_power = power_dict["total_power"]
+    total_electric_power = CVs_dict["total_electric_power"]
+    # total_electric_power = power_dict["total_power"]
     ax.plot(
         time_nmpc,
         1e-06 * np.array(total_electric_power[:len(time_nmpc)]),
@@ -412,6 +430,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     #                fontsize=ax_fontsize)
     ax.set_title("Power usage", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'power_usage.png')
+        plt.savefig(nmpc_filepath + 'power_usage.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -436,30 +457,30 @@ def plot_results(filename, nmpc_filepath, include_PI):
             linestyle="dotted"
         )
     
-    # fuel_inlet_temperature = CVs_dict["fuel_inlet_temperature"]
-    # sweep_inlet_temperature = CVs_dict["sweep_inlet_temperature"]
-    # cell_average_temperature = CVs_dict["cell_average_temperature"]
-    # ax.plot(
-    #     time_nmpc,
-    #     fuel_inlet_temperature[:len(time_nmpc)],
-    #     color="darkorange",
-    #     linewidth=2,
-    #     label="Fuel NMPC",
-    # )
-    # ax.plot(
-    #     time_nmpc,
-    #     sweep_inlet_temperature[:len(time_nmpc)],
-    #     color="blue",
-    #     linewidth=2,
-    #     label="Sweep NMPC",
-    # )
-    # ax.plot(
-    #     time_nmpc,
-    #     cell_average_temperature[:len(time_nmpc)],
-    #     color="gray",
-    #     linewidth=2,
-    #     label="Cell average NMPC",
-    # )
+    fuel_inlet_temperature = CVs_dict["fuel_inlet_temperature"]
+    sweep_inlet_temperature = CVs_dict["sweep_inlet_temperature"]
+    cell_average_temperature = CVs_dict["cell_average_temperature"]
+    ax.plot(
+        time_nmpc,
+        fuel_inlet_temperature[:len(time_nmpc)],
+        color="darkorange",
+        linewidth=2,
+        label="Fuel NMPC",
+    )
+    ax.plot(
+        time_nmpc,
+        sweep_inlet_temperature[:len(time_nmpc)],
+        color="blue",
+        linewidth=2,
+        label="Sweep NMPC",
+    )
+    ax.plot(
+        time_nmpc,
+        cell_average_temperature[:len(time_nmpc)],
+        color="gray",
+        linewidth=2,
+        label="Cell average NMPC",
+    )
 
     ax.set_xlim(time[0], time[-1])
     ax.set_ylim((850, 1150))
@@ -468,6 +489,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     demarcate_ramps(ax)
     ax.set_title("SOEC inlet temperature", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'SOFC_inlet_temperatures.png')
+        plt.savefig(nmpc_filepath + 'SOFC_inlet_temperatures.pdf')
 
     fig = plt.figure()
     ax = fig.subplots()
@@ -516,6 +540,9 @@ def plot_results(filename, nmpc_filepath, include_PI):
     demarcate_ramps(ax)
     ax.set_title("SOEC outlet temperature", fontsize=title_fontsize)
     ax.legend()
+    if savefig:
+        plt.savefig(nmpc_filepath + 'SOFC_outlet_temperatures.png')
+        plt.savefig(nmpc_filepath + 'SOFC_outlet_temperatures.pdf')
 
 #     fig = plt.figure()
 #     ax = fig.subplots()
@@ -794,7 +821,7 @@ def plot_manipulated_variables(filename, nmpc_filepath, include_PI=True):
             linestyle=':',
         )
         demarcate_ramps(ax)
-        ax.set_xlim(time[0], time[-1])
+        ax.set_xlim(time_nmpc[0], time_nmpc[-1])
         if alias_dict[i] == "condenser_hot_outlet_temperature":
             ymin = 300
             ymax = 350
@@ -857,7 +884,7 @@ def plot_controlled_variables(filename, nmpc_filepath, include_PI=True):
         except:
             pass
         demarcate_ramps(ax)
-        ax.set_xlim(time[0], time[-1])
+        ax.set_xlim(time_nmpc[0], time_nmpc[-1])
         try:
             ymin = min(list(target) + list(values))
             ymax = max(list(target) + list(values))
@@ -871,6 +898,23 @@ def plot_controlled_variables(filename, nmpc_filepath, include_PI=True):
         ax.set_ylim(ylim)
         ax.set_xlabel("Time (hr)", fontsize=ax_fontsize)
         ax.set_title(i, fontsize=title_fontsize)
+    
+    fig, ax = plt.subplots()
+    for iz in iz_plot:
+        ax.plot(
+            time_nmpc,
+            dTdz_electrode_logbook[iz][:len(time_nmpc)],
+            linewidth=2,
+            label=f"node {iz}"
+        )
+    ax.set_xlim([time[0], time[-1]])
+    ax.set_ylim((-1000, 1000))
+    # ax.set_xlabel("Time (hr)", fontsize=12)
+    ax.set_ylabel("$dT/dz$ ($K/m$)", fontsize=12)
+    ax.set_title("SOEC PEN temperature gradient, NMPC", fontsize=12)
+    # demarcate_ramps(ax)
+    ax.legend(loc='best')
+
 
 
 def make_paper_figures_old(filename, include_PI):
